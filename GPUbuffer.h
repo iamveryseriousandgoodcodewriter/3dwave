@@ -77,51 +77,7 @@ struct GPUbuffer{
 //#include <avx2intrin.h>
 
 
-struct uniformContainer{
-    uniformContainer( const size_t isize)
-    :entitySize(isize+isize%8),  entityIDs(new int[isize+isize%8]())
-    {
-        for(size_t i=0;i<entitySize;++i)
-        {
-            entityIDs[i]=-1;
-        }
-    }
 
-    //TODO(): implement rule of 5, or use uniqueptr
-
-    //now adds are fast and rmv is slow
-    //if you guarantee a sorted list of ints
-    //(th sort algo respects the order of ints)
-    //you can binary search for ID to remove O(log n)
-    int add();
-
-    void remove(const int ID);
-
-
-    void sortWithData(std::function<void(int i, int* gather)> subSorts); 
-
-
-    ~uniformContainer()
-    {
-        delete[] entityIDs;
-    }
-    size_t size()const{return entitySize;}
-    int end()const{return writeIndex;}
-protected:
-    int IDCounter=0;
-    size_t entitySize;
-    int* entityIDs;
-    int writeIndex=0;
-public:
-    void printIDs(const char* msg="")const
-    {
-        printf("\n%s", msg);
-        for(int i=0; i<writeIndex; ++i)
-        {
-            printf("\nId: %i, vIndex:%i", entityIDs[i], i);
-        }
-    }
-};
 
 
 

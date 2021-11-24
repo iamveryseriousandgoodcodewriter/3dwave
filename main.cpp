@@ -251,8 +251,17 @@ void testInMainLoop()
 
 }
 
+void tf()
+{
+    uniformContainer_list l;
+    uniform3d* dptr=new uniform3d(1024);
+    l.addContainer("cont", dptr);
+    l.onSort();
+    l.onInternalUpdate();   
+}
+
 //called without a window
 void testMain()
 {
-
+    tf();
 }

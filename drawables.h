@@ -5,56 +5,11 @@
 #include "math/glm/mat4x4.hpp"
 #include "math/glm/ext/matrix_transform.hpp"
 #include "math/glm/gtx/euler_angles.hpp"
+#include "dynamicRenderData.h"
 
 void printmat4(glm::mat4 mat);
 
-struct gridUniforms : public uniformContainer
-{
-    gridUniforms(const size_t count)
-    :uniformContainer(count), trans(new glm::vec2[count+count%8]), scale(new float[count+count%8])
-    {}
-    int add(const glm::vec2 pos, const float iscale)
-    {
-        int id=uniformContainer::add();
-        if(id==-1)
-        {
-            return -1;
-        }
-        trans[writeIndex-1]=pos;
-        scale[writeIndex-1]=iscale;
-        return id;
-    }
-    void sort()
-    {
-        auto vec2Sort=[](int i, int* gather, glm::vec2* data)
-        {   
-            glm::vec2 temp[8];
-            for(char k=0;k<8;k++)
-            {
-                temp[k]=data[gather[k]];
-            }
-            memcpy(data+i, temp, 8*sizeof(glm::vec2));
-        };
-        auto floatSort=[](int i, int* gather, float* data)
-        {
-            float temp[8];
-            for(char k=0;k<8;k++)
-            {
-                temp[k]=data[gather[k]];
-            }
-            memcpy(data+i, temp, 8*sizeof(float));
-        };
-        auto sortLmbd=[vec2Sort, floatSort, this](int i, int* gather){
-            vec2Sort(i, gather, trans);
-            floatSort(i, gather, scale);
-        };
 
-        sortWithData(sortLmbd);
-    }
-
-    glm::vec2* trans;
-    float* scale;
-};
 
 
 struct gridDrawer;
@@ -124,92 +79,7 @@ void gridDrawerDrawCall(gridDrawer* t)
     t->draw();
 }
 
-struct uniform3d : public uniformContainer
-{
-    uniform3d(const size_t isize)
-    :uniformContainer(isize), trans(new glm::vec3[isize+isize%8]),rot(new glm::vec3[isize+isize%8]()), scale(new glm::vec3[isize+isize%8]),
-    model(new glm::mat4[isize+isize%8])
-    {}
 
-    //TODO() realloc function if we get too big
-    //TODO() update method
-
-    int add()
-    {
-        int id=uniformContainer::add();
-        if(id==-1)
-        {
-            return -1;
-        }
-        trans[writeIndex-1]=glm::vec3(0.0f,0.0f,0.0f);
-        rot[writeIndex-1]=glm::vec3(0.0f,0.0f,0.0f);
-        scale[writeIndex-1]=glm::vec3(1.0f,1.0f,1.0f);
-        return id;
-    }
-    int add(const glm::vec3 itrans, const glm::vec3 irot, const glm::vec3 iscale)
-    {
-        int id=uniformContainer::add();
-        if(id==-1)
-        {
-            return -1;
-        }
-        trans[writeIndex-1]=itrans;
-        rot[writeIndex-1]=irot;
-        scale[writeIndex-1]=iscale;
-        return id;
-    }
-
-    void sort()
-    {
-        auto nestedSort=[](int i, int* gather, glm::vec3* data)
-        {   
-            glm::vec3 temp[8];
-            for(char k=0;k<8;k++)
-            {
-                temp[k]=data[gather[k]];
-            }
-            memcpy(data+i, temp, 8*sizeof(glm::vec3));
-        };
-        auto sortLmbd=[nestedSort, this](int i, int* gather){
-            nestedSort(i, gather, trans);
-            nestedSort(i, gather, rot);
-            nestedSort(i, gather, scale);
-        };
-
-        sortWithData(sortLmbd);
-    }
-
-    void buildModelMats()
-    {
-        int i;
-        for(i=0;i<writeIndex;++i)
-        {
-            model[i]=glm::scale(glm::mat4(1.0f), scale[i]);
-            
-        }
-        for(i=0;i<writeIndex;++i)
-        {
-            model[i]=glm::eulerAngleXYZ(rot[i].x,rot[i].y,rot[i].z)*model[i];
-            
-        }
-        for(i=0;i<writeIndex;++i)
-        {
-            model[i]=glm::translate(model[i], trans[i]);
-            //printf("\n printing mat %i", i);
-            //printmat4(model[i]);
-        }
-    }
-   
-
-    //put the responsibility of gpu buffers on this?
-
-    //build matrix or leave raw?
-    glm::vec3* trans;
-    glm::vec3* rot;
-    glm::vec3* scale;
-
-    glm::mat4* model;
-};
 
 
 void printmat4(glm::mat4 mat)
