@@ -16,14 +16,32 @@
 
 
 
-struct subBuffer{
 
+//1. request buffer from GPU-buffer store
+//2. make subbuffer in it, with a certain mesh
+//3. build vaos from subbuffers i just made
+
+
+
+
+struct subBuffer{
+    friend struct GPUbuffer;
+    
     void print(const char* msg="")const
     {
         printf("\n%s  ", msg);
         printf("subBuffer--->ID:%i, size: %ld, offset: %ld", ID, size, offset);
     }
 
+    void setStride(int8_t s){this->stride=s;}
+    void setPerVertexSize(int8_t s){this->perVertexSize=s;}
+    int8_t getPerVertexSize(){return this->perVertexSize;}
+    int8_t getStride(){return this->stride;}
+    size_t getSize(){return this->size;}
+    size_t getOffset(){return this->offset;}
+private:
+    int8_t perVertexSize=-1;
+    int8_t stride=-1;
     int ID=-1;
     int refCount=0;
     size_t size=0;//size, alos in floats
@@ -37,19 +55,26 @@ struct subBuffer{
 //for big boy stuff maybe to a AoS approach?
 struct GPUbuffer{
 
-    //appears to be working on a cpu level
-    //next steps:
-    //make functions for actually writing in the buffer
-
-    GPUbuffer(const size_t isize)
-    :size(isize), subBuffers(std::vector<subBuffer>())
+    GPUbuffer(const size_t isize, const GLenum dataType)
+    :size(isize), datatype(dataType), subBuffers(std::vector<subBuffer>())
     {}
 
     bool init(const GLenum drawType=GL_STATIC_DRAW);
 
-    int getSameSubBuffer(const int ID);
-    //warning: this is expensive
-    int newSubBuffer(const size_t n_size);//in floats
+
+    /*
+    warning: this is expensive
+    finds an offset within the buffer, where the new requested buffer of size nsize would fit in, and returns the offset.
+    !!!!n_size and return value are in floats/datatype!!!!
+    returns error codes:
+    -1: n_size > this->size
+    -2: not enough space left
+    -3: cant find a small enough space to fit in n_size, either sort or find     other buffer
+    */
+    int getOffsetForSize(const size_t n_size);
+
+    int newSubBuffer(const size_t n_size);
+    subBuffer& getSubBuffer(const int ID);
 
     //write to buffer ID, offset into the subbuffer, size in floats
     void writeToSubBuffer(const int ID, int offset, int w_size, float* data);
@@ -59,11 +84,14 @@ struct GPUbuffer{
     //write a function to repack the buffer in the GPU
     void repackSubBuffers();
 
+    int getSameSubBuffer(const int ID);
     void freeSubBuffer(const int ID);
 
     GLenum drawtype=GL_FALSE;
+    GLenum datatype=GL_FLOAT;
     int IDcounter=0;
     size_t size=0;//in floats, i guess
+    size_t freeSize;
     GLuint bufferID=0;
     std::vector<subBuffer> subBuffers;
 };
@@ -156,66 +184,7 @@ public:
 
 
 
+
+
 #endif //GPUBUFFER_H
 
-/*
-    void sort(const size_t uniformSize=0, void* uniforms=nullptr)
-    {
-        int i, k=1, end;
-        //int64_t temp;
-        for(i=0; i<keyCount;)
-        {
-            if(dataKey[i]==0)
-            {
-                dataKey[i]=dataKey[keyCount-k++];
-                memcpy(entityIDs+i*64, entityIDs+(keyCount-k)*64, sizeof(unsigned int)*64);
-                if(uniforms)//for le safety
-                {
-                    memcpy((char*)uniforms+i*uniformSize*64, (char*)uniforms+(keyCount-k)*64*uniformSize, uniformSize*64);
-                }
-                dataKey[keyCount-k++]=0;
-            }
-        }
-        end=keyCount-k;
-        //keycount-k=last key with some data in it
-
-        auto swap=[&](int64_t to, int l, int64_t from, int j){
-            
-            if(uniforms)
-            {
-                memcpy((char*)uniforms+(to*64+l)*uniformSize, (char*)uniforms+((from*64)+j)*uniformSize, uniformSize);
-            }
-            entityIDs[to*64+l]=entityIDs[from*64+j];
-            //return void;
-        };
-
-        int k_end=63;
-        for(i=0;i<end;++i)
-        {
-            for(k=0;k<64&&i<end;k++)
-            {   
-                if( !(HASBIT64(dataKey[i], k)) )//find bit that is 0 in beginning
-                {
-                    while(i<=end&&k<k_end)
-                    {
-                        if(k_end<0)
-                        {
-                            k_end=63;
-                            end--;
-                        }
-                        if(HASBIT64(dataKey[end], k_end--))//we found a bit in the end
-                        {
-                            //swap the bits
-                            SETBIT64(dataKey[i], k);
-                            NOTBIT64(dataKey[end], (k_end+1));
-                            swap(i, k, end, k_end);
-                            break;
-                        }
-                        
-                    }
-                }
-            }
-        }
-        
-    }
-    */

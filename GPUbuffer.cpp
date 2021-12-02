@@ -30,40 +30,48 @@ int GPUbuffer::getSameSubBuffer(const int ID)
     return -1;
 }
 
+int GPUbuffer::newSubBuffer(const size_t n_size)
+{
+    int n_offset=this->getOffsetForSize(n_size);
+    if(n_offset<0)return n_offset;
+
+    subBuffer s;
+    s.offset=n_offset;
+    s.size=n_size;
+    s.ID=++IDcounter;
+    subBuffers.push_back(s);
+    return s.ID;
+}
+subBuffer& GPUbuffer::getSubBuffer(const int ID)
+{
+    for(subBuffer& it: this->subBuffers)
+    {
+        if(it.ID=ID)
+        {
+            return it;
+        }
+    }
+}
+
 //warning: this is expensive
-int GPUbuffer::newSubBuffer(const size_t n_size)//in floats
+int GPUbuffer::getOffsetForSize(const size_t n_size)//in floats
 {
     //some error checking and size confirmation
     if(n_size>this->size)
-    {
-        #ifndef NDEBUG
-        printf("\n GPU buffer too small to fit new SubBuffer");
-        #endif //NDEBUG
-        return -1;
-    }
+    {DEBUGMSG("\n GPU buffer too small to fit new SubBuffer");return -1;}
+
     size_t winner=0;
-    for(auto& it: subBuffers)
-    {
-        winner+=it.size;
-    }
+    for(auto& it: subBuffers){winner+=it.size;}
     if(winner+n_size>this->size)
-    {
-        #ifndef NDEBUG
-        printf("\n GPU buffer too full to fit new SubBuffer");
-        #endif //NDEBUG
-        return -1;
-    }
+    {DEBUGMSG("\n GPU buffer too full to fit new SubBuffer");return -2;}
+
     //sort so the algo works and we have a neat vector
     this->sortSubBuffers();
-
     //edge case where
     if(subBuffers.empty())
     {
-        subBuffer s{IDcounter++,1, n_size, 0};
-        subBuffers.push_back(s);
         return 0;
     }
-
     //find a chunk in the buffer that fits size floats
     //also pack them neatly
     auto a=subBuffers.cbegin();
@@ -83,30 +91,19 @@ int GPUbuffer::newSubBuffer(const size_t n_size)//in floats
         }
         ++b, ++a;
     }
-    auto addFunc=[n_size, this](std::vector<subBuffer>::const_iterator a){
-        subBuffer s;
-        s.offset=a->offset+a->size;
-        s.refCount=1;
-        s.size=n_size;
-        s.ID=IDcounter++;
-        subBuffers.push_back(s);
-        
-        printf("\n adding ID=%i", s.ID);
-        return s.ID;
-    };
     if(witer!=subBuffers.cend())
     {
-        return addFunc(witer);
+        return witer->offset+witer->size;
     }
     --b;//because b is nown at the end!
     if(b->offset+b->size+n_size<size)
     {
-        return addFunc(b);
+        return b->offset+b->size;
     }
-    #ifndef NDEBUG
-    printf("\n newSubBuffer allocation failed, returning id -1\n ->this s that the inbetween spaces are too small, and there is not enough e left at the end");
-    #endif //NDEBUG
-    return -1;
+    
+    DEBUGMSG("\n newSubBuffer allocation failed, returning id -3\n ->this s that the inbetween spaces are too small, and there is not enough e left at the end");
+    
+    return -3;
 }
 void GPUbuffer::writeToSubBuffer(const int ID, int offset, int w_size, float* data)
 {

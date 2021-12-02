@@ -90,6 +90,12 @@ struct uniformContainer_list
             it();
     }
 
+    void pipe()
+    {
+        this->onSort();
+        this->onInternalUpdate();
+    }
+
     //make this its own class "pipline"
     //each pipeline specifies its entry ticket
     //upon entwring this list you say wich pipeline you wanna enter
@@ -185,7 +191,6 @@ protected:
     }
 
 
-    //virutal pipeline entrytickets
 
 
     void sortWithData(std::function<void(int i, int* gather)> subSorts); 
@@ -203,7 +208,12 @@ protected:
     int* entityIDs;
     int writeIndex=0;
 public:
+    //virutal pipeline entrytickets
     virtual uniformContainer_list::pipelineFuncPtrs makeEntryTicket()=0;
+
+
+
+    //el printore
     void printIDs(const char* msg="")const
     {
         printf("\n%s", msg);
@@ -216,12 +226,6 @@ public:
 
 
 
-struct genericUniformpipeline: public uniformContainer
-{
-
-};
-
-
 struct uniform3d : public uniformContainer
 {
     uniform3d(const size_t isize)
@@ -230,7 +234,7 @@ struct uniform3d : public uniformContainer
     {}
 
     void reAllocate(const size_t newSize);
-      void remove(const int ID)
+    void remove(const int ID)
     {
         uniformContainer::remove(ID);
     }
@@ -246,20 +250,13 @@ struct uniform3d : public uniformContainer
         this->buildModelMats();
     }
 
-    void printhello()
-    {
-        DEBUGMSG("\n hello");
-    }
-    void printworld()
-    {
-        DEBUGMSG("\n world");
-    }
+    
     uniformContainer_list::pipelineFuncPtrs makeEntryTicket()
     {
         uniformContainer_list::pipelineFuncPtrs p;
-        p.sort=std::bind(&uniform3d::printhello, std::ref(*this));
+        p.sort=std::bind(&uniform3d::sort, std::ref(*this));
         p.dt=nullptr;
-        p.internal=std::bind(&uniform3d::printworld, std::ref(*this));
+        p.internal=std::bind(&uniform3d::buildModelMats, std::ref(*this));
         return p;
     }
 
@@ -289,12 +286,13 @@ struct gridUniforms : public uniformContainer
         uniformContainer::remove(ID);
     }
 
-    void onPipelineStage1()
-    {
-        this->sort();
-    }
+    
     uniformContainer_list::pipelineFuncPtrs makeEntryTicket(){
-        return uniformContainer_list::pipelineFuncPtrs();
+        uniformContainer_list::pipelineFuncPtrs p;
+        p.sort=std::bind(&gridUniforms::sort, std::ref(*this));
+        p.dt=nullptr;
+        p.internal=nullptr;
+        return p;
     };
 
     glm::vec2* trans;

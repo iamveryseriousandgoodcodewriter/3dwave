@@ -140,6 +140,17 @@ void windowMainLoop(renderContext* context, mainControl& status)
     buildMeshes();
     compileShaders();
     makeGPUBuffers();
+
+    uniformContainer_list dynamic_data_list;
+    dynamic_data_list.addContainer(
+        "uniform3d_polygonDynamics",
+        new uniform3d(1000)
+    );
+    dynamic_data_list.addContainer(
+        "gridUniforms_",
+        new gridUniforms(10000)
+    );
+
   
 
     drawableContainer<solidColorPolygon, gridDrawer>*
@@ -150,14 +161,16 @@ void windowMainLoop(renderContext* context, mainControl& status)
             &masterContainer::_GPUBuffers.at("polygonStatic"),
             &masterContainer::_GPUBuffers.at("polygonDynamic"),
             shaderManager::getInstance()->getShader("testShader"),
-            std::vector<std::string>{"testVertex", "testColor"}
+            std::vector<std::string>{"testVertex", "testColor"},
+            (uniform3d*)dynamic_data_list.containers.at("uniform3d_polygonDynamics")
         ),
         new gridDrawer(
             10000,
             &masterContainer::_GPUBuffers.at("gridStatic"),
             &masterContainer::_GPUBuffers.at("gridDynamic"),
             shaderManager::getInstance()->getShader("gridShader"),
-            std::vector<std::string>{"grid"}
+            std::vector<std::string>{"grid"},
+            (gridUniforms*)dynamic_data_list.containers.at("gridUniforms_")
         )
     );
     
@@ -171,14 +184,14 @@ void windowMainLoop(renderContext* context, mainControl& status)
     ref->oneDynamicBufferSetup("modelMats", 1000*16, 4, 4, 2, 1);
     ploygonUniformIDS=ref->addNEntity(makevec3(data, 10), 2.0f);
     
-    ref->updateDynamicBuffer("modelMats", 16, (float*)ref->u.model);
+    ref->updateDynamicBuffer("modelMats", 16, (float*)ref->u->model);
     gridDrawer* g=drawer->getByName<gridDrawer>("grids");
     g->staticBufferSetup(g->meshIDs);
     g->oneDynamicBufferSetup("translations", 10000*2, 2, 1, 1, 1);
     g->oneDynamicBufferSetup("scales", 10000*1, 1, 1, 2, 1);
     subGridIDs=g->makeMetaSquare(2.0f, 100);
-    g->updateDynamicBuffer("translations", 2, (float*)g->u.trans);
-    g->updateDynamicBuffer("scales", 1, (float*)g->u.scale);
+    g->updateDynamicBuffer("translations", 2, (float*)g->u->trans);
+    g->updateDynamicBuffer("scales", 1, (float*)g->u->scale);
     g->drawMode=GL_LINE_LOOP;
         
 
@@ -210,6 +223,8 @@ void windowMainLoop(renderContext* context, mainControl& status)
         g->setUniformFloat(getAlpha(dt, PI), "angle");
         g->setUniformFloat(observer::getInstance()->spike, "spike");
         g->setUniformFloat(observer::getInstance()->damp, "damp");
+
+        dynamic_data_list.pipe();
         drawer->draw();
         
         SDL_GL_SwapWindow(context->getCWindow());
@@ -226,12 +241,6 @@ void EventMainLoop(bool& quit)
             if(e.key.keysym.sym==SDLK_ESCAPE)
             {
                 quit=true;
-            }
-            else if(e.key.keysym.sym==SDLK_UP)
-            {
-            }
-            else if(e.key.keysym.sym==SDLK_DOWN)
-            {
             }
         }
         observer::getInstance()->input(e);

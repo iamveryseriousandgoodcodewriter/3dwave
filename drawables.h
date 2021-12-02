@@ -17,14 +17,14 @@ void gridDrawerDrawCall(gridDrawer* t);
 //template this with a uniform container?
 struct gridDrawer:public drawable
 {
-    gridDrawer(const size_t imaxEntities, GPUbuffer* staticBuf, GPUbuffer* dynamicBuf, GLuint ishader, const std::vector<std::string> imeshIDs)
-    :drawable(imaxEntities, staticBuf, dynamicBuf, ishader, imeshIDs), u(imaxEntities)
+    gridDrawer(const size_t imaxEntities, GPUbuffer* staticBuf, GPUbuffer* dynamicBuf, GLuint ishader, const std::vector<std::string> imeshIDs, gridUniforms* uni_ptr)
+    :drawable(imaxEntities, staticBuf, dynamicBuf, ishader, imeshIDs), u(uni_ptr)
     {}
 
     //this stuff should be abstarcetd in the abse class
     void updateDynamicBuffer(const std::string buffer, int insFloatCnt, float* data)
     {
-        this->u.sort();
+        this->u->sort();
 
         int bufferID=dynamicSubBuffers.at(buffer);
         size_t w_size=instanceCount*insFloatCnt;
@@ -39,12 +39,12 @@ struct gridDrawer:public drawable
             return -1;
         }
         this->instanceCount++;
-        return this->u.add(itrans, iscale);
+        return this->u->add(itrans, iscale);
     }
 
     void removeEntity(const int ID)
     {
-        this->u.remove(ID);
+        this->u->remove(ID);
         instanceCount--;
     }
 
@@ -72,7 +72,7 @@ struct gridDrawer:public drawable
 
    
 
-    gridUniforms u;
+    gridUniforms* u;
 };
 void gridDrawerDrawCall(gridDrawer* t)
 {
@@ -95,14 +95,15 @@ struct solidColorPolygon;
 void solidColorPolygonDrawCall(solidColorPolygon* t);
 struct solidColorPolygon : public drawable{
 
-    solidColorPolygon(const size_t imaxEntities, GPUbuffer* staticBuf, GPUbuffer* dynamicBuf, GLuint ishader, const std::vector<std::string> imeshIDs)
-    :drawable(imaxEntities, staticBuf, dynamicBuf, ishader, imeshIDs), u(imaxEntities)
+    solidColorPolygon(const size_t imaxEntities, GPUbuffer* staticBuf, GPUbuffer* dynamicBuf, GLuint ishader, const std::vector<std::string> imeshIDs, uniform3d* uni_ptr)
+    :drawable(imaxEntities, staticBuf, dynamicBuf, ishader, imeshIDs), u(uni_ptr)
     {}
 
     void updateDynamicBuffer(const std::string buffer, int insFloatCnt, float* data)
     {
-        this->u.sort();
-        this->u.buildModelMats();
+        //this should be done in the pipeline?
+        //this->u.sort();
+        //this->u.buildModelMats();
 
         int bufferID=dynamicSubBuffers.at(buffer);
         size_t w_size=instanceCount*insFloatCnt;
@@ -117,12 +118,12 @@ struct solidColorPolygon : public drawable{
             return -1;
         }
         this->instanceCount++;
-        return this->u.add(itrans, irot, iscale);
+        return this->u->add(itrans, irot, iscale);
     }
 
     void removeEntity(const int ID)
     {
-        this->u.remove(ID);
+        this->u->remove(ID);
         instanceCount--;
     }
 
@@ -148,7 +149,7 @@ struct solidColorPolygon : public drawable{
         return std::bind(&solidColorPolygonDrawCall, this);
     }
 
-    uniform3d u;
+    uniform3d* u;
 };
 void solidColorPolygonDrawCall(solidColorPolygon* t)
 {
