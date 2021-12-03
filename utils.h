@@ -139,6 +139,31 @@ private:
 };
 
 
+struct bad_construction_exe
+{
+    enum : int{
+        bad_gpu_subBufferHandle,
+        bad_alloc
+    };
+    bad_construction_exe(const int iID, const std::string imsg)
+    :ID(iID), msg(imsg){}
+
+    int ID;
+    std::string msg;
+};
+struct terminal_exe
+{
+    enum : int{
+        bad_alloc
+    };
+    terminal_exe(const int iID, const std::string imsg)
+    :ID(iID), msg(imsg){}
+    int ID;
+    std::string msg;
+};
+
+
+
 
 #ifndef NDEBUG
 #define DEBUGMSG(x) (std::cout<<(x))

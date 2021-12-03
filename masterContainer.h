@@ -109,14 +109,6 @@ private:
     }
 };
 
-struct subBufferHandle{
-
-    subBufferHandle(const int iID, GPUbuffer* ptr)
-    :subBufferID(iID), buffer(ptr){}
-
-    int subBufferID;
-    GPUbuffer* buffer;
-};
 
 struct masterContainer{
 
@@ -136,12 +128,12 @@ struct masterContainer{
         {
             return false;
         }
-        _GPUBuffers.insert({name, buf});
+        //_GPUBuffers.insert({name, buf});
         return isGood;
     }
 
-    
-    static std::unordered_map<std::string, GPUbuffer> _GPUBuffers;
+    static gpuBufferTree_head _GPUBuffers;
+    //static std::unordered_map<std::string, GPUbuffer> _GPUBuffers;
     static std::unordered_map<std::string, drawable*> _drawables;
     static std::unordered_map<std::string, uniformContainer*> _uniformContainers;
     static std::unordered_map<std::string, subBufferHandle> subBuffers;
@@ -181,111 +173,7 @@ void makeGPUBuffers()
 //but i could make a "filled" buffer func for that
 
 
-struct gpuBufferList;
-struct gpuBufferTree_head
-{
-    gpuBufferList* static_draw;
-    gpuBufferList* dynamic_draw;
-    gpuBufferList* stream_draw;
-};
 
-struct gpuBufferList_node;
-
-//idea: make a list of lists, where each list has an associated size
-//opt: sort the list so we know where the full buffers are and dont check them
-struct gpuBufferList
-{
-    subBufferHandle newSubBuffer(const size_t n_size)
-    {
-        //opt: make it so we dont actually probe the buffers that are too small
-        while(next_bufferSize<n_size){next_bufferSize*=2;}
-        if(!head)
-        {
-            return allocateNodeAndAddSubBuffer(head, n_size);
-        }
-        
-        gpuBufferList_node* curr=head;
-        int ID=-1;
-        while((curr=curr->next)->next)
-        {
-            if((ID=curr->buffer.newSubBuffer(n_size))>=0)
-            {
-                //yay :)
-                //return the handle?
-                return subBufferHandle(ID, &curr->buffer);
-                
-            }
-            
-        }
-        if((ID=curr->buffer.newSubBuffer(n_size))>=0)
-        {
-            return subBufferHandle(ID, &curr->buffer);
-        }
-        if(ID<0)
-        {
-            while(curr->next){curr=curr->next;}
-            return allocateNodeAndAddSubBuffer(curr->next, n_size);
-        }
-
-    }
-
-    subBufferHandle allocateNodeAndAddSubBuffer(gpuBufferList_node* ptr, const size_t size)
-    {
-        int ID=-1;
-        try{
-                ptr=allocateNewNode(next_bufferSize, type, drawType);
-                if((ID=ptr->buffer.newSubBuffer(size))<0)
-                {
-                    throw 30;
-                }
-                return subBufferHandle(ID, &ptr->buffer);
-            }
-            catch(const int& err)
-            {
-                DEBUGMSG("\n GPUBUFFERLIST::newSubBuffer exe caught, bullshit-buffer returned, msg:");
-                switch(err)
-                {
-                    case 10: DEBUGMSG("\nGPUbuffer bad alloc");break;
-                    case 20: DEBUGMSG("\nnew GPU-buffer init failed");break;
-                    case 30: DEBUGMSG("\n new subbuffer failed after new allocation, big error here");break;
-                    default: DEBUGMSG("\n this should not have happend, call the cops!");break;
-                }
-            }
-        return subBufferHandle(-1, nullptr);
-    }
-    gpuBufferList_node* allocateNewNode(const size_t size, GLenum type, GLenum drawType)
-    {
-        gpuBufferList_node* latest=new gpuBufferList_node
-        (GPUbuffer(size, type));
-        if(!latest)
-        {
-            throw 10;
-        }
-        if(!latest->buffer.init(drawType))
-        {
-            delete latest;
-            throw 20;
-        }
-        return latest;
-    }
-
-    //TODO() write this
-    void deleteNodes();
-
-    GLenum drawType;
-    GLenum type;
-    size_t next_bufferSize=1000;
-    gpuBufferList_node* head;
-};
-
-struct gpuBufferList_node
-{
-    gpuBufferList_node(const GPUbuffer ibuf)
-    :buffer(ibuf){}
-
-    GPUbuffer buffer;
-    gpuBufferList_node* next=nullptr;
-};
 
 
 

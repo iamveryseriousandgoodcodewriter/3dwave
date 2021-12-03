@@ -2,6 +2,7 @@
 #include "context.h"
 #include "masterContainer.h"
 #include "observer.h"
+#include "uniform_impl.h"
 
 //UTILS STATICS
 std::random_device rng::r;
@@ -10,7 +11,7 @@ std::mt19937_64 rng::mt{r()};
 std::vector<GLuint> UBOwrapper::bindingPoints={0};
 
 //MASTER CONTAINER STATICS
-std::unordered_map<std::string, GPUbuffer> masterContainer::_GPUBuffers;
+gpuBufferTree_head masterContainer::_GPUBuffers;
 std::unordered_map<std::string, drawable*> masterContainer::_drawables;
 std::unordered_map<std::string, uniformContainer*> masterContainer::_uniformContainers;
 struct mainControl : public controlFlags32
@@ -83,41 +84,56 @@ int main(int argc, char** argv)
 
     mainControl status;
 
-    if(argc>1)
-    {
-        for(int i=1;i<argc;++i)
+    try{
+        if(argc>1)
         {
-            std::string arg=argv[i];
-            if(arg=="-w")
+            for(int i=1;i<argc;++i)
             {
-                renderContext::getInstance()->makeWindowAndContext();
-                status.set(mainControl::contextOn);
+                std::string arg=argv[i];
+                if(arg=="-w")
+                {
+                    renderContext::getInstance()->makeWindowAndContext();
+                    status.set(mainControl::contextOn);
+                }
+                else if(arg=="-test")
+                {
+                    testMain();
+                }
+                else if(arg=="contextTest")
+                {
+                    status.set(mainControl::testContextMain);
+                }
+                else if (arg=="-looptest")
+                {
+                    status.set(mainControl::testLoopMain);
+                }
+
+
             }
-            else if(arg=="-test")
-            {
-                testMain();
-            }
-            else if(arg=="contextTest")
-            {
-                status.set(mainControl::testContextMain);
-            }
-            else if (arg=="-looptest")
-            {
-                status.set(mainControl::testLoopMain);
-            }
-            
 
         }
 
-    }
-
-    if(status.is(mainControl::contextOn))
-    {
-        if(status.is(mainControl::testContextMain))
+        if(status.is(mainControl::contextOn))
         {
-            testWithWindow();
+            if(status.is(mainControl::testContextMain))
+            {
+                testWithWindow();
+            }
+            windowMainLoop(renderContext::getInstance(), status);
         }
-        windowMainLoop(renderContext::getInstance(), status);
+
+    }catch(terminal_exe& exe)
+    {
+        printf("\n terminal exe caught...shutting down");
+        switch(exe.ID)
+        {
+            case terminal_exe::bad_alloc:
+                printf("\n cause: bad allocation/corrupted heap, msg: \n%s", exe.msg.c_str());
+                break;
+            default: printf("\n");break;
+        }
+
+        //TODO(): cleanup memory?
     }
 
 
@@ -142,16 +158,37 @@ void windowMainLoop(renderContext* context, mainControl& status)
     makeGPUBuffers();
 
     uniformContainer_list dynamic_data_list;
-    dynamic_data_list.addContainer(
-        "uniform3d_polygonDynamics",
-        new uniform3d(1000)
-    );
-    dynamic_data_list.addContainer(
-        "gridUniforms_",
-        new gridUniforms(10000)
-    );
 
-  
+    //TODO(): wrap this up in a func
+    try{
+        dynamic_data_list.addContainer(
+            "uniform3d_polygonDynamics",
+            new uniform3d(1000, "uniform3d_polygonDynamics")
+        );
+
+        //these dont really belong here cause they are very much static but well...
+        dynamic_data_list.addContainer(
+            "gridUniforms_",
+            new gridUniforms(10000, {"grid_trans", "grid_scale"})
+        );
+    }catch(bad_construction_exe& exe)
+    {
+        DEBUGMSG("\n bad construction_exe caught on uniform creation");
+        switch(exe.ID)
+        {
+            case bad_construction_exe::bad_gpu_subBufferHandle:
+                DEBUGMSG("\n"+exe.msg);
+                break;
+            case bad_construction_exe::bad_alloc:
+                DEBUGMSG("\n"+exe.msg);
+                throw terminal_exe(terminal_exe::bad_alloc, "");
+                break;
+            default: break;
+        }
+    }
+
+    //grab drawable
+    //link vao with subBuffer
 
     drawableContainer<solidColorPolygon, gridDrawer>*
     drawer=new drawableContainer<solidColorPolygon, gridDrawer>(

@@ -33,13 +33,16 @@ struct subBuffer{
         printf("subBuffer--->ID:%i, size: %ld, offset: %ld", ID, size, offset);
     }
 
-    void setStride(int8_t s){this->stride=s;}
-    void setPerVertexSize(int8_t s){this->perVertexSize=s;}
-    int8_t getPerVertexSize(){return this->perVertexSize;}
-    int8_t getStride(){return this->stride;}
-    size_t getSize(){return this->size;}
-    size_t getOffset(){return this->offset;}
+    void setStride(const int8_t s){this->stride=s;}
+    void setPerVertexSize(const int8_t s){this->perVertexSize=s;}
+    int8_t getPerVertexSize()const{return this->perVertexSize;}
+    int8_t getStride()const{return this->stride;}
+    size_t getSize()const{return this->size;}
+    size_t getOffset()const{return this->offset;}
 private:
+    subBuffer()=default;
+    subBuffer(const subBuffer&)=default;
+    subBuffer(subBuffer&&)=default;
     int8_t perVertexSize=-1;
     int8_t stride=-1;
     int ID=-1;
@@ -56,7 +59,7 @@ private:
 struct GPUbuffer{
 
     GPUbuffer(const size_t isize, const GLenum dataType)
-    :size(isize), datatype(dataType), subBuffers(std::vector<subBuffer>())
+    :size(isize), datatype(dataType)
     {}
 
     bool init(const GLenum drawType=GL_STATIC_DRAW);
@@ -77,7 +80,10 @@ struct GPUbuffer{
     subBuffer& getSubBuffer(const int ID);
 
     //write to buffer ID, offset into the subbuffer, size in floats
-    void writeToSubBuffer(const int ID, int offset, int w_size, float* data);
+    void writeToSubBuffer(const int ID, const int w_size, const float* data, const int offset=0);
+
+    //init a subbuffer with vertex specification, if data is provided a write is called aswell
+    void init_subBuffer(const int ID, const int8_t iperVertexSize, const int8_t istride, float* data=nullptr, const int data_size=0);
 
     void sortSubBuffers();
     //TODO()
@@ -96,50 +102,125 @@ struct GPUbuffer{
     std::vector<subBuffer> subBuffers;
 };
 
+struct subBufferHandle{
+
+    subBufferHandle(const int iID, GPUbuffer* ptr)
+    :subBufferID(iID), buffer(ptr){}
+    subBufferHandle()
+    :subBufferID(-1), buffer(nullptr){}
+
+    int subBufferID;
+    GPUbuffer* buffer;
+};
+
+struct gpuBufferList;
+struct gpuBufferTree_head
+{
+    gpuBufferTree_head()
+    :static_draw(GL_STATIC_DRAW, GL_FLOAT, 1000),
+    dynamic_draw(GL_DYNAMIC_DRAW, GL_FLOAT, 1000),
+    stream_draw(GL_STREAM_DRAW, GL_FLOAT, 1000)
+    {}
+
+    //floats
+    gpuBufferList static_draw;
+    gpuBufferList dynamic_draw;
+    gpuBufferList stream_draw;
+    //indices?
+    //gpuBufferList* mesh_inidices;
+};
+
+struct gpuBufferList_node;
+
+constexpr size_t MAX_BUFFERSIZE_SUM=1000000000/sizeof(float);
+//idea: make a list of lists, where each list has an associated size
+//opt: sort the list so we know where the full buffers are and dont check them
+struct gpuBufferList
+{
+
+    gpuBufferList(GLenum idrawtype, GLenum itype, const size_t initial_size)
+    :drawType(idrawtype), type(itype), next_bufferSize(initial_size)
+    {}
+    subBufferHandle newSubBuffer(const size_t n_size);
+
+    subBufferHandle allocateNodeAndAddSubBuffer(gpuBufferList_node* ptr, const size_t size);
+    gpuBufferList_node* allocateNewNode(const size_t size, GLenum type, GLenum drawType);
+
+    //TODO() write this
+    void deleteNodes();
+
+    GLenum drawType;
+    GLenum type;
+    size_t next_bufferSize=1000;
+    size_t combined_size=0;
+    gpuBufferList_node* head=nullptr;
+};
+
+struct gpuBufferList_node
+{
+    gpuBufferList_node(const GPUbuffer ibuf)
+    :buffer(ibuf){}
+
+    GPUbuffer buffer;
+    gpuBufferList_node* next=nullptr;
+};
+
+
 #define HASBIT64(nr, bit) (nr>>bit)&1
 #define SETBIT64(nr, bit) nr&=(1<<bit)
 #define NOTBIT64(nr, bit) nr&=!(1<<bit)
-//for each subbuffer id: query a draw call with a uniform, upload the uniforms into a buffer
-//and then call an instanced render method on that subrange
 //#include <immintrin.h>
 //#include <avx2intrin.h>
 
 
+struct oneVertexArraySetup
+{
+    oneVertexArraySetup(const subBufferHandle sbh, int idiv, int iloc)
+    :han(sbh), attribDivisor(idiv), location(iloc){}
+    subBufferHandle han;
+    int attribDivisor;
+    int location;
+};
 
 
+//this is works like this currently:
+//you make meshes, you put the meshes in the gpuBuffer
+//you make instances(uniforms), and put them in the GPUBuffer
+//    *this is by inheritance in the uniform_impl.h
+//you grab the subBufferhandles and call this->init with them
+//      *you have to know the attribDiv(obv)
+//      *the location is based on the shader you are using
+//you draw
+//:))
 
+//TODO():
+//  rework the drawable container
+//  make the pipeline concept from the uniform coantainer more generic?
+//  make an example and run it
+//  build a better abstraction for the uniformBufferObjects
+//  make everything nice and shiny(with loading functions and stuff like that)
 
-
+//IDEAS():
+//  *un-link the construction and uploading of the data
+//      this way you can init the data and upload it to gpu when it is needed
+//  *make a function that produces a drawable, but hides everything that would be 
+//      needed for that(like the unifrom container creation  etc.)
 struct drawable{
 
 protected:
-    drawable(const size_t imaxEntities, GPUbuffer* staticBuf, GPUbuffer* dynamicBuf, GLuint ishader, const std::vector<std::string> imeshIDs)
-    :maxEntities(imaxEntities), staticBuffer(staticBuf), dynamicBuffer(dynamicBuf),shader(ishader), meshIDs(imeshIDs) 
+    drawable(GLuint ishader, const std::vector<std::string> imeshIDs)
+    :shader(ishader), meshIDs(imeshIDs) 
     {
         vertexCnt=meshContainer::getInstance()->getMesh(meshIDs[0]).getVertexCount();
     }
 public:
 
     
-    int addEntity();
-    void init();
+    //int addEntity();
+    void init(const size_t vertexCount, std::vector<oneVertexArraySetup> vertArrays);
 
-    //this uses the msehcontainer
-    void staticBufferSetup(std::vector<std::string> meshes);
-
-    void oneStaticBufferSetup();
-
-    /*  
-        make a subbuffer in dynamic buffer, save in map with name
-        it will hold the floats specified
-        perVertSize is the number of elements per vertex
-        attribPtrCnt is the number of attribptrs for this buffer
-                    (if you put mat4 you need 4ptrs*4vertsize)
-        attribDivisor is for instancing (1 means advance once per instance)
-        location begin is the location in the shader
-    */
-    void oneDynamicBufferSetup(const std::string name,const size_t sizeInFloats, const int perVertSize, const int attribPtrCnt, const int locationBegin, const int attribDivisor);
-
+    /*links a subBuffer into this->vao, attrib divisor is for instncaing, location is the location in this->shader, for the vertexAttrib in tha array*/
+    void vertexArraySetup(const subBufferHandle buf, const int attribDivisor, const int location);
 
     void setUniformFloat(const float f, const char* name)
     {
@@ -158,26 +239,18 @@ public:
     }
 
     std::function<void()> getDrawFunc()const;
-    //method to switch between static/dynamic buffers?
-    //how to copy the data?
-    //need to update VAO asweel
 
-    size_t maxEntities=0;
+
+
+    //TODO grab the instance count from the uniform containers
+    //this is not easyly done tho as it would have to happen every frame
     int instanceCount=0;
-    //uniforms entities;
-
-    GLenum drawMode=GL_TRIANGLES;
-    //multiple vaos with a drawmode arg?
+    size_t vertexCnt;//for drawing
     GLuint VAO=0;
-    size_t vertexCnt;//for drawing, also needs the offset tho
-    GPUbuffer* staticBuffer;
-    std::unordered_map<std::string, int> staticSubBuffers;//these could arguably hold the subbuffers themselfs
-    GPUbuffer* dynamicBuffer;
-    std::unordered_map<std::string, int> dynamicSubBuffers;
+    GLenum drawMode=GL_TRIANGLES;
+    GLuint shader=0;
 
     std::vector<std::string> meshIDs;
-
-    GLuint shader=0;
 };
 
 

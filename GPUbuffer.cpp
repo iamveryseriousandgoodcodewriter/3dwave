@@ -105,15 +105,26 @@ int GPUbuffer::getOffsetForSize(const size_t n_size)//in floats
     
     return -3;
 }
-void GPUbuffer::writeToSubBuffer(const int ID, int offset, int w_size, float* data)
+void GPUbuffer::init_subBuffer(const int ID, const int8_t iperVertexSize, const int8_t istride, float* data=nullptr, const int data_size=0)
 {
+    subBuffer& subBuf=getSubBuffer(ID);
+    subBuf.setPerVertexSize(iperVertexSize);
+    subBuf.setStride(istride);
+    if(data&&data_size)
+    {
+        writeToSubBuffer(ID, data_size, data);
+    }
+}
+void GPUbuffer::writeToSubBuffer(const int ID, const int w_size, const float* data, const int offset)
+{
+    subBuffer& subBuf=getSubBuffer(ID);
+    if(w_size>subBuf.size)
+    {DEBUGMSG("\n writeToSubBUffer failed: writeSize>buffersize");return;}
     glBindBuffer(GL_ARRAY_BUFFER, bufferID);
-    float* buf=(float*)glMapBufferRange(GL_ARRAY_BUFFER, sizeof(float)*(subBuffers[ID].offset+offset), sizeof(float)*w_size, GL_MAP_WRITE_BIT);
+    float* buf=(float*)glMapBufferRange(GL_ARRAY_BUFFER, sizeof(float)*(subBuf.offset+offset), sizeof(float)*w_size, GL_MAP_WRITE_BIT);
     if(!buf)
     {
-        #ifndef NDEBUG
-        printf("\n GPU_BUFFER writetosubbuffer failed");
-        #endif
+        DEBUGMSG("\n GPU_BUFFER writetosubbuffer failed: mapping returned NULL");
         return;
     }
     memcpy(buf, data, w_size*sizeof(float));
@@ -143,10 +154,100 @@ void GPUbuffer::freeSubBuffer(const int ID)
     }
     if(iter!=subBuffers.end()&&iter->refCount==0)
         subBuffers.erase(iter);
-    #ifndef NDEBUG
     else
-        printf("\n freeSubBuffer on ID=%i failed: id not found", ID);
-    #endif //NDEBUG
+        DEBUGMSG("\n freeSubBuffer failed: id not found");
+}
+
+/*
+================================================================================
+================================================================================
+================================================================================
+==================================LIST==========================================
+================================================================================
+================================================================================
+================================================================================
+================================================================================
+*/
+
+
+//you give size-in-type and you get a subBufferHandle
+//warning: {-1, NULL} will be returned if allocation fails, so jot that down
+subBufferHandle gpuBufferList::newSubBuffer(const size_t n_size)
+{
+    //opt: make it so we dont actually probe the buffers that are too small
+    while(next_bufferSize<n_size){next_bufferSize*=2;}
+    if(!head)
+    {
+        return allocateNodeAndAddSubBuffer(head, n_size);
+    }
+    
+    gpuBufferList_node* curr=head;
+    int ID=-1;
+    while((curr=curr->next)->next)
+    {
+        if((ID=curr->buffer.newSubBuffer(n_size))>=0)
+        {
+            //yay :)
+            //return the handle?
+            return subBufferHandle(ID, &curr->buffer);
+            
+        }
+        
+    }
+    if((ID=curr->buffer.newSubBuffer(n_size))>=0)
+    {
+        return subBufferHandle(ID, &curr->buffer);
+    }
+    if(ID<0)
+    {
+        while(curr->next){curr=curr->next;}
+        return allocateNodeAndAddSubBuffer(curr->next, n_size);
+    }
+}
+subBufferHandle gpuBufferList::allocateNodeAndAddSubBuffer(gpuBufferList_node* ptr, const size_t size)
+{
+    int ID=-1;
+    try{
+            ptr=allocateNewNode(next_bufferSize, type, drawType);
+            if((ID=ptr->buffer.newSubBuffer(size))<0)
+            {
+                throw 30;
+            }
+            return subBufferHandle(ID, &ptr->buffer);
+        }
+        catch(const int& err)
+        {
+            DEBUGMSG("\n GPUBUFFERLIST::newSubBuffer exe caught, bullshit-buffer rned, msg:");
+            switch(err)
+            {
+                case 10: DEBUGMSG("\nGPUbuffer bad alloc");break;
+                case 20: DEBUGMSG("\nnew GPU-buffer init failed");break;
+                case 30: DEBUGMSG("\n new subbuffer failed after new allocation, big error here");break;
+                case 40: DEBUGMSG("\n max gpuBufferList-size of 1GB reached, allocation aborted");break;
+                default: DEBUGMSG("\n this should not have happend, call the cops!");break;
+            }
+        }
+    return subBufferHandle(-1, nullptr);
+}
+gpuBufferList_node* gpuBufferList::allocateNewNode(const size_t size, GLenum type, GLenum drawType)
+{
+    if(combined_size>=MAX_BUFFERSIZE_SUM)
+    {
+        throw 40;
+    }
+    combined_size+=size;
+    gpuBufferList_node* latest=new gpuBufferList_node
+    (GPUbuffer(size, type));
+    if(!latest)
+    {
+        throw 10;
+    }
+    if(!latest->buffer.init(drawType))
+    {
+        delete latest;
+        throw 20;
+    }
+    return latest;
 }
 
 
@@ -162,87 +263,68 @@ void GPUbuffer::freeSubBuffer(const int ID)
 ================================================================================
 */
 
-void drawable::staticBufferSetup(std::vector<std::string> meshes)
+int attribPtrCntHelper(const int perVertexSize);
+int vertexVectorSizeHelper(const int size);
+void drawable::vertexArraySetup(const subBufferHandle buf, const int attribDivisor, const int location)
 {
-    if(staticBuffer->drawtype==GL_FALSE)
-    {
-        DEBUGMSG("\nstatic buffer setup failed: GPUbuffer uninitialized");
-        return;
-    }
-    int i=0;
-    if(!glIsVertexArray(VAO))
-        glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
+    if(!buf.buffer)
+    {DEBUGMSG("\n vertexArraySetup failed: buffer is NULL");}
 
-    for(auto it : meshes)
-    {
-        
-        //populate gpu buffer with mesh data
-        mesh _mesh=meshContainer::getInstance()->getMesh(it);
-        int subBufferID=staticBuffer->newSubBuffer(_mesh.size);
-        if(subBufferID==-1)
-        {
-            #ifndef NDEBUG
-            printf("\n vertexDataSetup failed: subBUfferID is -1");
-            #endif //NDEBUG
-            return;
-        }
-        this->staticBuffer->writeToSubBuffer(subBufferID, 0, _mesh.size, _mesh.data);
-        this->staticSubBuffers.insert({it,subBufferID});
-        //set up vao to read the afore mentioned data
-        glBindBuffer(GL_ARRAY_BUFFER, staticBuffer->bufferID);
-        glVertexAttribPointer(i,
-         _mesh.perVertexCount,//vertex-vector size
-          GL_FLOAT, GL_FALSE,//type+normalized
-          0,//stride between veretx-vectors (for interleaving)
-          (void*)(staticBuffer->subBuffers[subBufferID].offset*sizeof(float))//et
-        );
-        glEnableVertexAttribArray(i++);
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
-    }
-    glBindVertexArray(0); 
-}
+    subBuffer& sb=buf.buffer->getSubBuffer(buf.subBufferID);
 
+    if(sb.getPerVertexSize()==-1)
+    {DEBUGMSG("\n vertexArray setup failed: subBuffer uninitialized");}
 
-void drawable::oneDynamicBufferSetup(const std::string name,const size_t sizeInFloats, const int perVertSize, const int attribPtrCnt, const int locationBegin, const int attribDivisor)
-{
-    if(!dynamicBuffer)
-    {
-        DEBUGMSG("\n trying to write to non-existant dynmic buffer in drawable::dynamic buffersetup");
-        return;
-    }
-    if(dynamicBuffer->drawtype==GL_FALSE)
-    {
-        DEBUGMSG("\nstatic buffer setup failed: GPUbuffer uninitialized");
-        return;
-    }
-    int sBufID=this->dynamicBuffer->newSubBuffer(sizeInFloats);
-    this->dynamicSubBuffers.insert({name, sBufID});
-    
-    size_t offset=perVertSize*sizeof(float);
-    size_t globalBufferOffset=this->dynamicBuffer->subBuffers[sBufID].offset*sizeof(float);
-    size_t stride=attribPtrCnt*offset;
-    if(!glIsVertexArray(VAO))
-        glGenVertexArrays(1, &VAO);
+    const int attribPtrCnt=attribPtrCntHelper(sb.getPerVertexSize()/4);
+    const int perVertexSize=sb.getPerVertexSize();
+    const size_t stride=sb.getPerVertexSize()*sizeof(float);
+    const size_t globalOffset=sb.getOffset()*sizeof(float);
+
 
     glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, this->dynamicBuffer->bufferID);
+    glBindBuffer(GL_ARRAY_BUFFER, buf.buffer->bufferID);
 
-    for(int i=0;i<attribPtrCnt;++i)
+    for(int i=0; i<attribPtrCnt;++i)
     {
-        glEnableVertexAttribArray(locationBegin+i);
-        glVertexAttribPointer(locationBegin+i, 
-        perVertSize, 
-        GL_FLOAT, 
-        GL_FALSE, 
+        glEnableVertexAttribArray(location+i);
+        glVertexAttribPointer(location+i, 
+        vertexVectorSizeHelper(perVertexSize-(4*(i+1))), 
+        buf.buffer->datatype, GL_FALSE, 
         stride, 
-        (void*)(offset*i+globalBufferOffset));
-        glVertexAttribDivisor(locationBegin+i, attribDivisor);
+        (void*)(4*i+globalOffset));
+        glVertexAttribDivisor(location+i, attribDivisor);
     }
+
     glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+int attribPtrCntHelper(const int perVertexSize)
+{
+    if(!perVertexSize%4)
+    {
+        return perVertexSize/4;
+    }
+    else
+    {
+        return (perVertexSize/4)+1;
+    }
+}
+int vertexVectorSizeHelper(const int size)
+{
+    if(size>=0)return 4;
+    else return 4+size;
+    
 }
 
 
+void drawable::init(const size_t vertexCount, std::vector<oneVertexArraySetup> vertArrays)
+{
+    this->vertexCnt=vertexCount;
+    for(auto& it:vertArrays)
+    {
+        this->vertexArraySetup(it.han, it.attribDivisor, it.location);
+    }
+}
 
 
 

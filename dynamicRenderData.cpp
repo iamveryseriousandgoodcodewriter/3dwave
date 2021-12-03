@@ -11,27 +11,6 @@
 ================================================================================
 */
 
- void uniformContainer_list::addContainer(
-     std::string name,
-     uniformContainer* container,
-     std::function<void()> sort,
-     std::function<void(float)> dt_update,
-     std::function<void()> internal_update)
-{
-    this->containers.insert({name, container});
-    if(sort)
-    {
-        sort_stage.push_back(sort);
-    }
-    if(dt_update)
-    {
-        dt_update_stage.push_back(dt_update);
-    }
-    if(internal_update)
-    {
-        internal_update_stage.push_back(internal_update);
-    }
-}
 
 void uniformContainer_list::addContainer(
     const std::string name,
@@ -56,6 +35,11 @@ void uniformContainer_list::unpackEntryTicket(pipelineFuncPtrs ticket)
     {
         internal_update_stage.push_back(ticket.internal);
     }
+    if(ticket.GPU_upload)
+    {
+        on_GPU_upload_stage.push_back(ticket.GPU_upload);
+    }
+
 }
 
 

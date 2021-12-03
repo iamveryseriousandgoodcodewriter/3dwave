@@ -8,6 +8,7 @@
 #include "math/glm/mat4x4.hpp"
 #include "math/glm/ext/matrix_transform.hpp"
 #include "math/glm/gtx/euler_angles.hpp"
+#include "GPUbuffer.h"
 
 struct pipeline
 {
@@ -52,14 +53,18 @@ struct uniformContainer_list
         time_update=1
     };
 
+    //how could one automate this? it is after all very repetitive
+    //or generalize this pipeline concept
     struct pipelineFuncPtrs
     {
         std::function<void()> sort;
         std::function<void()> internal;
         std::function<void(float)> dt;
+        std::function<void()> GPU_upload;
     };
 
 
+    /*
     void addContainer(
         const std::string name,
         uniformContainer* container,
@@ -67,6 +72,7 @@ struct uniformContainer_list
         std::function<void(float)> dt_update,
         std::function<void()> internal_update
     );
+    */
     void addContainer(
         const std::string name,
         uniformContainer* container
@@ -89,11 +95,19 @@ struct uniformContainer_list
         for(auto it: internal_update_stage)
             it();
     }
+    void onGPUUpload()
+    {
+        for(auto it: on_GPU_upload_stage)
+        {
+            it();
+        }
+    }
 
     void pipe()
     {
         this->onSort();
         this->onInternalUpdate();
+        this->onGPUUpload();
     }
 
     //make this its own class "pipline"
@@ -102,6 +116,7 @@ struct uniformContainer_list
     std::vector<std::function<void()>> sort_stage;
     std::vector<std::function<void(float)>> dt_update_stage;
     std::vector<std::function<void()>> internal_update_stage;
+    std::vector<std::function<void()>> on_GPU_upload_stage;
     //unordered map of pipelines anyone??
 
 
@@ -207,6 +222,7 @@ protected:
     size_t entitySize;
     int* entityIDs;
     int writeIndex=0;
+    std::vector<subBufferHandle> myGPUBuffer;
 public:
     //virutal pipeline entrytickets
     virtual uniformContainer_list::pipelineFuncPtrs makeEntryTicket()=0;
@@ -226,78 +242,10 @@ public:
 
 
 
-struct uniform3d : public uniformContainer
-{
-    uniform3d(const size_t isize)
-    :uniformContainer(isize), trans(new glm::vec3[isize+isize%8]),rot(new glm::vec3[isize+isize%8]()), scale(new glm::vec3[isize+isize%8]),
-    model(new glm::mat4[isize+isize%8])
-    {}
-
-    void reAllocate(const size_t newSize);
-    void remove(const int ID)
-    {
-        uniformContainer::remove(ID);
-    }
-    
-    //TODO() realloc function if we get too big
-    //TODO() update method
-
-    int add();
-    int add(const glm::vec3 itrans, const glm::vec3 irot, const glm::vec3 iscale);
-
-    void internalUpdate()
-    {
-        this->buildModelMats();
-    }
-
-    
-    uniformContainer_list::pipelineFuncPtrs makeEntryTicket()
-    {
-        uniformContainer_list::pipelineFuncPtrs p;
-        p.sort=std::bind(&uniform3d::sort, std::ref(*this));
-        p.dt=nullptr;
-        p.internal=std::bind(&uniform3d::buildModelMats, std::ref(*this));
-        return p;
-    }
-
-    void sort();
-
-    void buildModelMats();
 
 
-    //build matrix or leave raw?
-    glm::vec3* trans;
-    glm::vec3* rot;
-    glm::vec3* scale;
-
-    glm::mat4* model;
-};
 
 
-struct gridUniforms : public uniformContainer
-{
-    gridUniforms(const size_t count)
-    :uniformContainer(count), trans(new glm::vec2[count+count%8]), scale(new float[count+count%8])
-    {}
-    int add(const glm::vec2 pos, const float iscale);
-    void sort();
-    void remove(const int ID)
-    {
-        uniformContainer::remove(ID);
-    }
-
-    
-    uniformContainer_list::pipelineFuncPtrs makeEntryTicket(){
-        uniformContainer_list::pipelineFuncPtrs p;
-        p.sort=std::bind(&gridUniforms::sort, std::ref(*this));
-        p.dt=nullptr;
-        p.internal=nullptr;
-        return p;
-    };
-
-    glm::vec2* trans;
-    float* scale;
-};
 
 
 
