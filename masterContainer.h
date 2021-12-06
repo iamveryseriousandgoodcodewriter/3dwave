@@ -145,43 +145,55 @@ void buildMeshes()
     meshContainer::getInstance()->addMesh(allocateMeshColor(), "testColor");
     meshContainer::getInstance()->addMesh(allocateSubGridMesh(10), "grid");
 }
+//uploads a mesh into gpu-space and saves it under name in the map
+//returns: the vertex count of the uploaded mesh
+inline
+size_t uploadMesh(const std::string name)
+{
+    mesh m=meshContainer::getInstance()->getMesh(name);
+    if(!m.data)
+    {
+        throw bad_construction_exe(bad_construction_exe::bad_return,
+        "upload of mesh failed: mesh doesnt exist name: "+name);
+    }
+    subBufferHandle sbh=masterContainer::_GPUBuffers.static_draw.newSubBuffer(m.size);
+    if(!sbh.buffer)
+    {
+        throw bad_construction_exe(bad_construction_exe::bad_gpu_subBufferHandle,
+        "upload of mesh failed: bad subBufferHandle name: "+name);
+    }
+    sbh.buffer->init_subBuffer(sbh.subBufferID, m.perVertexCount, 0, m.data, m.size);
+    masterContainer::subBuffers.insert({name, sbh});
+
+    return m.getVertexCount();
+}
+//uploads a mesh into gpu-space and saves it under name in the map
+//returns: the vertex count of the uploaded mesh
+inline
+size_t uploadMesh(const std::string name, mesh m)
+{
+    if(!m.data)
+    {
+        throw bad_construction_exe(bad_construction_exe::bad_return,
+        "upload of mesh failed: mesh doesnt exist name: "+name);
+    }
+    subBufferHandle sbh=masterContainer::_GPUBuffers.static_draw.newSubBuffer(m.size);
+    if(!sbh.buffer)
+    {
+        throw bad_construction_exe(bad_construction_exe::bad_gpu_subBufferHandle,
+        "upload of mesh failed: bad subBufferHandle name: "+name);
+    }
+    sbh.buffer->init_subBuffer(sbh.subBufferID, m.perVertexCount, 0, m.data, m.size);
+    masterContainer::subBuffers.insert({name, sbh});
+
+    return m.getVertexCount();
+}
 inline
 void compileShaders()
 {
     shaderManager::getInstance()->makeProgram("testShader",solidColorCubeVertexShader, solidColorCubeFragmentShader);
     shaderManager::getInstance()->makeProgram("gridShader",gridShaderWithWave_vertex, solidColorCubeFragmentShader);
 }
-inline
-void makeGPUBuffers()
-{
-    constexpr size_t testCount=1000;
-    masterContainer::addGPUBuffer("polygonStatic", meshContainer::getInstance()->getMesh("testColor").size*2, GL_STATIC_DRAW);
-    masterContainer::addGPUBuffer("polygonDynamic", testCount*16*2, GL_DYNAMIC_DRAW);
-
-    masterContainer::addGPUBuffer("gridStatic", meshContainer::getInstance()->getMesh("grid").size*2, GL_STATIC_DRAW);
-    masterContainer::addGPUBuffer("gridDynamic", 100000*3, GL_DYNAMIC_DRAW);
-}
-
-
-//i guess you could use this now to get a subBuffer, and the rest is done automatically
-//up next:
-//fill the subbuffer with actual information
-//make vaos from subbuffers
-//incorporate the uniforms with the drawables and the buffers
-//how to organize the subBUffers? having these lookups via the id seems kinda slow and unnessecary, but then again the gpu buffer needs to know about its contents
-//also this hides the way things are spread in the buffers making hard to optimize a given draw pipeline
-//but i could make a "filled" buffer func for that
-
-
-
-
-
-
-
-
-
-
-
 
 
 

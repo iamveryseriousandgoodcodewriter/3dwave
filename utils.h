@@ -143,6 +143,7 @@ struct bad_construction_exe
 {
     enum : int{
         bad_gpu_subBufferHandle,
+        bad_return,
         bad_alloc
     };
     bad_construction_exe(const int iID, const std::string imsg)

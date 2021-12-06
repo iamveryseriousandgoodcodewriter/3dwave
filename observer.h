@@ -37,8 +37,8 @@ struct observer{
 
     void init()
     {
-        position =glm::vec3(-15.0f, 15.0f, 20.0f);
-        direction=glm::vec3(1.0f, 0.0f, 0.0f);
+        position =glm::vec3(-10.0f, .0f, 200.0f);
+        direction=glm::vec3(1.0f, 0.0f, .0f);
 
         this->View=glm::lookAt(
             position, 

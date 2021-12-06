@@ -26,7 +26,7 @@
 
 struct subBuffer{
     friend struct GPUbuffer;
-    
+
     void print(const char* msg="")const
     {
         printf("\n%s  ", msg);
@@ -41,8 +41,7 @@ struct subBuffer{
     size_t getOffset()const{return this->offset;}
 private:
     subBuffer()=default;
-    subBuffer(const subBuffer&)=default;
-    subBuffer(subBuffer&&)=default;
+    
     int8_t perVertexSize=-1;
     int8_t stride=-1;
     int ID=-1;
@@ -59,7 +58,8 @@ private:
 struct GPUbuffer{
 
     GPUbuffer(const size_t isize, const GLenum dataType)
-    :size(isize), datatype(dataType)
+    :size(isize), datatype(dataType), 
+    subBuffers(std::vector<subBuffer>(1, subBuffer()))
     {}
 
     bool init(const GLenum drawType=GL_STATIC_DRAW);
@@ -113,36 +113,27 @@ struct subBufferHandle{
     GPUbuffer* buffer;
 };
 
-struct gpuBufferList;
-struct gpuBufferTree_head
-{
-    gpuBufferTree_head()
-    :static_draw(GL_STATIC_DRAW, GL_FLOAT, 1000),
-    dynamic_draw(GL_DYNAMIC_DRAW, GL_FLOAT, 1000),
-    stream_draw(GL_STREAM_DRAW, GL_FLOAT, 1000)
-    {}
-
-    //floats
-    gpuBufferList static_draw;
-    gpuBufferList dynamic_draw;
-    gpuBufferList stream_draw;
-    //indices?
-    //gpuBufferList* mesh_inidices;
-};
 
 struct gpuBufferList_node;
-
 constexpr size_t MAX_BUFFERSIZE_SUM=1000000000/sizeof(float);
 //idea: make a list of lists, where each list has an associated size
-//opt: sort the list so we know where the full buffers are and dont check them
+//opt: *sort the list so we know where the full buffers are and dont check them
+//      *make like a list of open subBuffer positions and fill those on demand
+//      *cache the allocations and do them in free time
 struct gpuBufferList
 {
 
     gpuBufferList(GLenum idrawtype, GLenum itype, const size_t initial_size)
     :drawType(idrawtype), type(itype), next_bufferSize(initial_size)
     {}
+
+    //make a newSubBuffer of type*n_size size(gimme the float count nigga)
+    //returns the handle to that subBuffer, or a {-1, NULL} on failure
+    //this does allocate new buffers up to MAX_BUFFERSIZE
+    //so dont call in hot path
     subBufferHandle newSubBuffer(const size_t n_size);
 
+private:
     subBufferHandle allocateNodeAndAddSubBuffer(gpuBufferList_node* ptr, const size_t size);
     gpuBufferList_node* allocateNewNode(const size_t size, GLenum type, GLenum drawType);
 
@@ -163,6 +154,22 @@ struct gpuBufferList_node
 
     GPUbuffer buffer;
     gpuBufferList_node* next=nullptr;
+};
+
+struct gpuBufferTree_head
+{
+    gpuBufferTree_head()
+    :static_draw(GL_STATIC_DRAW, GL_FLOAT, 1000),
+    dynamic_draw(GL_DYNAMIC_DRAW, GL_FLOAT, 1000),
+    stream_draw(GL_STREAM_DRAW, GL_FLOAT, 1000)
+    {}
+
+    //floats
+    gpuBufferList static_draw;
+    gpuBufferList dynamic_draw;
+    gpuBufferList stream_draw;
+    //indices?
+    //gpuBufferList* mesh_inidices;
 };
 
 
@@ -205,14 +212,13 @@ struct oneVertexArraySetup
 //      this way you can init the data and upload it to gpu when it is needed
 //  *make a function that produces a drawable, but hides everything that would be 
 //      needed for that(like the unifrom container creation  etc.)
+// maybe the drawable wants to hold all of the construction nessecary for it?
+//maybe not tho lol
 struct drawable{
 
-protected:
-    drawable(GLuint ishader, const std::vector<std::string> imeshIDs)
-    :shader(ishader), meshIDs(imeshIDs) 
-    {
-        vertexCnt=meshContainer::getInstance()->getMesh(meshIDs[0]).getVertexCount();
-    }
+    drawable(GLuint ishader)
+    :shader(ishader)
+    {}
 public:
 
     
@@ -235,6 +241,7 @@ public:
         glUseProgram(this->shader);
         glBindVertexArray(this->VAO);
         glDrawArraysInstanced(this->drawMode, 0, vertexCnt, this->instanceCount);
+        //glDrawArrays(this->drawMode, 0, vertexCnt);
         glBindVertexArray(0);
     }
 
@@ -249,8 +256,6 @@ public:
     GLuint VAO=0;
     GLenum drawMode=GL_TRIANGLES;
     GLuint shader=0;
-
-    std::vector<std::string> meshIDs;
 };
 
 

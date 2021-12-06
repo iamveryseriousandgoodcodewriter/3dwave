@@ -43,12 +43,6 @@ void uniformContainer_list::unpackEntryTicket(pipelineFuncPtrs ticket)
 }
 
 
-
-
-
-
-
-
 /*
 ================================================================================
 ================================================================================
@@ -63,9 +57,7 @@ int uniformContainer::add()
 {
     if(writeIndex==entitySize-1)
     {
-        #ifndef NDEBUG
-        printf("\n uniform container full!");
-        #endif //NDEBUG
+        DEBUGMSG("\n uniform container full!");
         return -1;
     }
     return (entityIDs[writeIndex++]=IDCounter++);        
@@ -144,140 +136,4 @@ void uniformContainer::sortWithData(std::function<void(int, int*)> subSorts)
     //printf("\n sort done");
 } 
 
-/*
-================================================================================
-================================================================================
-================================================================================
-=====================================GRID======================================
-================================================================================
-================================================================================
-================================================================================
-================================================================================
-*/
 
-int gridUniforms::add(const glm::vec2 pos, const float iscale)
-{
-    int id=uniformContainer::add();
-    if(id==-1)
-    {
-        return -1;
-    }
-    trans[writeIndex-1]=pos;
-    scale[writeIndex-1]=iscale;
-    return id;
-}
-void gridUniforms::sort()
-{
-    auto vec2Sort=[](int i, int* gather, glm::vec2* data)
-    {   
-        glm::vec2 temp[8];
-        for(char k=0;k<8;k++)
-        {
-            temp[k]=data[gather[k]];
-        }
-        memcpy(data+i, temp, 8*sizeof(glm::vec2));
-    };
-    auto floatSort=[](int i, int* gather, float* data)
-    {
-        float temp[8];
-        for(char k=0;k<8;k++)
-        {
-            temp[k]=data[gather[k]];
-        }
-        memcpy(data+i, temp, 8*sizeof(float));
-    };
-    auto sortLmbd=[vec2Sort, floatSort, this](int i, int* gather){
-        vec2Sort(i, gather, trans);
-        floatSort(i, gather, scale);
-    };
-    sortWithData(sortLmbd);
-}
-
-
-/*
-================================================================================
-================================================================================
-================================================================================
-==================================POLYGONS======================================
-================================================================================
-================================================================================
-================================================================================
-================================================================================
-*/
-
-
-void uniform3d::reAllocate(const size_t newSize)
-{
-    if(newSize<writeIndex)
-    {
-        DEBUGMSG("\n unfiromContainer reAlloc failed: trying to shrink w writeIndex");
-        return;
-    }
-    trans=allocateAndCopy(newSize, trans, writeIndex);
-    rot=allocateAndCopy(newSize, rot, writeIndex);
-    scale=allocateAndCopy(newSize, scale, writeIndex);
-    
-}
-
-int uniform3d::add()
-{
-    int id=uniformContainer::add();
-    if(id==-1)
-    {
-        return -1;
-    }
-    trans[writeIndex-1]=glm::vec3(0.0f,0.0f,0.0f);
-    rot[writeIndex-1]=glm::vec3(0.0f,0.0f,0.0f);
-    scale[writeIndex-1]=glm::vec3(1.0f,1.0f,1.0f);
-    return id;
-}
-int uniform3d::add(const glm::vec3 itrans, const glm::vec3 irot, const glm::vec3 iscale)
-{
-    int id=uniformContainer::add();
-    if(id==-1)
-    {
-        return -1;
-    }
-    trans[writeIndex-1]=itrans;
-    rot[writeIndex-1]=irot;
-    scale[writeIndex-1]=iscale;
-    return id;
-}
-void uniform3d::sort()
-{
-    auto nestedSort=[](int i, int* gather, glm::vec3* data)
-    {   
-        glm::vec3 temp[8];
-        for(char k=0;k<8;k++)
-        {
-            temp[k]=data[gather[k]];
-        }
-        memcpy(data+i, temp, 8*sizeof(glm::vec3));
-    };
-    auto sortLmbd=[nestedSort, this](int i, int* gather){
-        nestedSort(i, gather, trans);
-        nestedSort(i, gather, rot);
-        nestedSort(i, gather, scale);
-    };
-    sortWithData(sortLmbd);
-}
-void uniform3d::buildModelMats()
-{
-    int i;
-    for(i=0;i<writeIndex;++i)
-    {
-        model[i]=glm::scale(glm::mat4(1.0f), scale[i]);
-        
-    }
-    for(i=0;i<writeIndex;++i)
-    {
-        model[i]=glm::eulerAngleXYZ(rot[i].x,rot[i].y,rot[i].z)*model[i];
-        
-    }
-    for(i=0;i<writeIndex;++i)
-    {
-        model[i]=glm::translate(model[i], trans[i]);
-        //printf("\n printing mat %i", i);
-        //printmat4(model[i]);
-    }
-}

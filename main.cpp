@@ -14,6 +14,7 @@ std::vector<GLuint> UBOwrapper::bindingPoints={0};
 gpuBufferTree_head masterContainer::_GPUBuffers;
 std::unordered_map<std::string, drawable*> masterContainer::_drawables;
 std::unordered_map<std::string, uniformContainer*> masterContainer::_uniformContainers;
+std::unordered_map<std::string, subBufferHandle> masterContainer::subBuffers;
 struct mainControl : public controlFlags32
 {
     enum : int{
@@ -155,10 +156,10 @@ void windowMainLoop(renderContext* context, mainControl& status)
     
     buildMeshes();
     compileShaders();
-    makeGPUBuffers();
+    //makeGPUBuffers(); one could inititalzie some of theses upfront?
 
     uniformContainer_list dynamic_data_list;
-
+    size_t vertCnt1, vertCnt2;
     //TODO(): wrap this up in a func
     try{
         dynamic_data_list.addContainer(
@@ -171,6 +172,10 @@ void windowMainLoop(renderContext* context, mainControl& status)
             "gridUniforms_",
             new gridUniforms(10000, {"grid_trans", "grid_scale"})
         );
+        vertCnt1=uploadMesh("testVertex");
+        uploadMesh("testColor");
+        vertCnt2=uploadMesh("grid");
+
     }catch(bad_construction_exe& exe)
     {
         DEBUGMSG("\n bad construction_exe caught on uniform creation");
@@ -187,59 +192,56 @@ void windowMainLoop(renderContext* context, mainControl& status)
         }
     }
 
-    //grab drawable
-    //link vao with subBuffer
-
-    drawableContainer<solidColorPolygon, gridDrawer>*
-    drawer=new drawableContainer<solidColorPolygon, gridDrawer>(
-        std::vector<std::string>{"polygons", "grids"},
-        new solidColorPolygon(
-            1000,
-            &masterContainer::_GPUBuffers.at("polygonStatic"),
-            &masterContainer::_GPUBuffers.at("polygonDynamic"),
-            shaderManager::getInstance()->getShader("testShader"),
-            std::vector<std::string>{"testVertex", "testColor"},
-            (uniform3d*)dynamic_data_list.containers.at("uniform3d_polygonDynamics")
-        ),
-        new gridDrawer(
-            10000,
-            &masterContainer::_GPUBuffers.at("gridStatic"),
-            &masterContainer::_GPUBuffers.at("gridDynamic"),
-            shaderManager::getInstance()->getShader("gridShader"),
-            std::vector<std::string>{"grid"},
-            (gridUniforms*)dynamic_data_list.containers.at("gridUniforms_")
-        )
+    drawable polygon(shaderManager::getInstance()->getShader("testShader"));
+    polygon.init(vertCnt1,
+        {
+        oneVertexArraySetup(masterContainer::subBuffers.at("testVertex"), 0, 0),
+        oneVertexArraySetup(masterContainer::subBuffers.at("testColor"), 0, 1),
+        oneVertexArraySetup(masterContainer::subBuffers.at("uniform3d_polygonDynamics"), 1, 2)
+        }
     );
+
+    drawable grid(shaderManager::getInstance()->getShader("gridShader"));
+    grid.init(vertCnt2,
+        {
+            oneVertexArraySetup(masterContainer::subBuffers.at("grid"), 0, 0),
+            oneVertexArraySetup(masterContainer::subBuffers.at("grid_trans"), 1, 1),
+            oneVertexArraySetup(masterContainer::subBuffers.at("grid_scale"), 1, 2),
+        }
+    );
+    grid.drawMode=GL_POINTS;
+
+    
     
     std::vector<int> ploygonUniformIDS;
     std::vector<int> subGridIDs;
-        
+    
+
+    gridUniforms* lol=(gridUniforms*)dynamic_data_list.containers.at("gridUniforms_");
+    subGridIDs=lol->makeDiagonalSquare(2.0f);
+    grid.instanceCount=lol->end();
+    lol->onGPUUpload();
+
         
     float* data=genOrigins(10, 20.0f, PI/20);
-    solidColorPolygon* ref=drawer->getByName<solidColorPolygon>("polygons");
-    ref->staticBufferSetup(ref->meshIDs);
-    ref->oneDynamicBufferSetup("modelMats", 1000*16, 4, 4, 2, 1);
-    ploygonUniformIDS=ref->addNEntity(makevec3(data, 10), 2.0f);
-    
-    ref->updateDynamicBuffer("modelMats", 16, (float*)ref->u->model);
-    gridDrawer* g=drawer->getByName<gridDrawer>("grids");
-    g->staticBufferSetup(g->meshIDs);
-    g->oneDynamicBufferSetup("translations", 10000*2, 2, 1, 1, 1);
-    g->oneDynamicBufferSetup("scales", 10000*1, 1, 1, 2, 1);
-    subGridIDs=g->makeMetaSquare(2.0f, 100);
-    g->updateDynamicBuffer("translations", 2, (float*)g->u->trans);
-    g->updateDynamicBuffer("scales", 1, (float*)g->u->scale);
-    g->drawMode=GL_LINE_LOOP;
-        
+
+    uniform3d* ref=(uniform3d*)dynamic_data_list.containers.at("uniform3d_polygonDynamics");
+
+    auto adderall=[](const std::vector<glm::vec3> pos){
+        std::vector<oneUniform3d> ret;
+        for(auto it: pos)
+        {
+            ret.push_back(oneUniform3d(it, glm::vec3(0.0f), glm::vec3(2.0f)));
+        }  
+        return ret;
+    };
+    ploygonUniformIDS=ref->addN(adderall(makevec3(data, 10)));
+    polygon.instanceCount=ref->end();
 
     UBOwrapper origins("waveOrigins", 10, 10*4);
     origins.init(GL_STATIC_DRAW);
     origins.updateUBO(data);
     free(data);
-
-  
-
-    
 
 
     observer::getInstance()->init();
@@ -257,12 +259,13 @@ void windowMainLoop(renderContext* context, mainControl& status)
         if(test)
         {
         }
-        g->setUniformFloat(getAlpha(dt, PI), "angle");
-        g->setUniformFloat(observer::getInstance()->spike, "spike");
-        g->setUniformFloat(observer::getInstance()->damp, "damp");
+        grid.setUniformFloat(getAlpha(dt, PI), "angle");
+        grid.setUniformFloat(observer::getInstance()->spike, "spike");
+        grid.setUniformFloat(observer::getInstance()->damp, "damp");
 
         dynamic_data_list.pipe();
-        drawer->draw();
+        polygon.draw();
+        grid.draw();
         
         SDL_GL_SwapWindow(context->getCWindow());
     }
@@ -297,17 +300,9 @@ void testInMainLoop()
 
 }
 
-void tf()
-{
-    uniformContainer_list l;
-    uniform3d* dptr=new uniform3d(1024);
-    l.addContainer("cont", dptr);
-    l.onSort();
-    l.onInternalUpdate();   
-}
 
 //called without a window
 void testMain()
 {
-    tf();
+    
 }

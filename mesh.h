@@ -222,9 +222,10 @@ struct meshContainer{
         return iter->second;
     }
 
-    void addMesh(mesh _data, std::string name)
+    mesh& addMesh(mesh _data, std::string name)
     {
         data.insert({name, _data});
+        return data.at(name);
     }
 
     void removeMesh(const std::string name)
@@ -236,6 +237,8 @@ struct meshContainer{
         }
 
     }
+
+    
 
     void freeAll()
     {

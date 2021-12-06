@@ -46,11 +46,13 @@ subBuffer& GPUbuffer::getSubBuffer(const int ID)
 {
     for(subBuffer& it: this->subBuffers)
     {
-        if(it.ID=ID)
+        if(it.ID==ID)
         {
             return it;
         }
     }
+    DEBUGMSG("\n getSubBUffer ID not found, returning first entry");
+    return *this->subBuffers.begin();
 }
 
 //warning: this is expensive
@@ -81,9 +83,9 @@ int GPUbuffer::getOffsetForSize(const size_t n_size)//in floats
     winner=size;
     while(b!=subBuffers.cend())
     {
-        if(b->offset-(a->offset+a->size)>n_size)
+        if( (b->offset-(a->offset+a->size)) >= n_size )
         {
-            if(b->offset-(a->offset+a->size)<winner)
+            if( (b->offset-(a->offset+a->size)) < winner )
             {
                 winner=b->offset-(a->offset+a->size);
                 witer=a;
@@ -96,16 +98,16 @@ int GPUbuffer::getOffsetForSize(const size_t n_size)//in floats
         return witer->offset+witer->size;
     }
     --b;//because b is nown at the end!
-    if(b->offset+b->size+n_size<size)
+    if( (b->offset+b->size+n_size) <= size )
     {
         return b->offset+b->size;
     }
     
-    DEBUGMSG("\n newSubBuffer allocation failed, returning id -3\n ->this s that the inbetween spaces are too small, and there is not enough e left at the end");
+    DEBUGMSG("\n GPUbuffer::getOffsetForSize failed, returning id -3\n ->this s that the inbetween spaces are too small, and there is not enough e left at the end");
     
     return -3;
 }
-void GPUbuffer::init_subBuffer(const int ID, const int8_t iperVertexSize, const int8_t istride, float* data=nullptr, const int data_size=0)
+void GPUbuffer::init_subBuffer(const int ID, const int8_t iperVertexSize, const int8_t istride, float* data, const int data_size)
 {
     subBuffer& subBuf=getSubBuffer(ID);
     subBuf.setPerVertexSize(iperVertexSize);
@@ -134,7 +136,7 @@ void GPUbuffer::writeToSubBuffer(const int ID, const int w_size, const float* da
 void GPUbuffer::sortSubBuffers()
 {
     if(subBuffers.empty())return;
-    auto cmp=[](subBuffer lhs, subBuffer rhs){
+    auto cmp=[](subBuffer& lhs, subBuffer& rhs){
         return lhs.offset<rhs.offset;
     };
     std::sort(subBuffers.begin(), subBuffers.end(), cmp);
@@ -203,6 +205,9 @@ subBufferHandle gpuBufferList::newSubBuffer(const size_t n_size)
         while(curr->next){curr=curr->next;}
         return allocateNodeAndAddSubBuffer(curr->next, n_size);
     }
+
+    DEBUGMSG("\n gpuBUfferLIst::newSubBuffer returning bad_handle. this should not happen");
+    return subBufferHandle(-1, nullptr);
 }
 subBufferHandle gpuBufferList::allocateNodeAndAddSubBuffer(gpuBufferList_node* ptr, const size_t size)
 {
@@ -268,19 +273,22 @@ int vertexVectorSizeHelper(const int size);
 void drawable::vertexArraySetup(const subBufferHandle buf, const int attribDivisor, const int location)
 {
     if(!buf.buffer)
-    {DEBUGMSG("\n vertexArraySetup failed: buffer is NULL");}
+    {DEBUGMSG("\n vertexArraySetup failed: buffer is NULL");return;}
 
     subBuffer& sb=buf.buffer->getSubBuffer(buf.subBufferID);
 
     if(sb.getPerVertexSize()==-1)
-    {DEBUGMSG("\n vertexArray setup failed: subBuffer uninitialized");}
+    {DEBUGMSG("\n vertexArray setup failed: subBuffer uninitialized");return;}
 
-    const int attribPtrCnt=attribPtrCntHelper(sb.getPerVertexSize()/4);
+    const int attribPtrCnt=attribPtrCntHelper(sb.getPerVertexSize());
     const int perVertexSize=sb.getPerVertexSize();
     const size_t stride=sb.getPerVertexSize()*sizeof(float);
     const size_t globalOffset=sb.getOffset()*sizeof(float);
 
-
+    if(!glIsVertexArray(VAO))
+    {
+        glGenVertexArrays(1, &this->VAO);
+    }
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, buf.buffer->bufferID);
 
@@ -288,10 +296,11 @@ void drawable::vertexArraySetup(const subBufferHandle buf, const int attribDivis
     {
         glEnableVertexAttribArray(location+i);
         glVertexAttribPointer(location+i, 
-        vertexVectorSizeHelper(perVertexSize-(4*(i+1))), 
-        buf.buffer->datatype, GL_FALSE, 
-        stride, 
-        (void*)(4*i+globalOffset));
+            vertexVectorSizeHelper(perVertexSize-(4*(i+1))), 
+            buf.buffer->datatype, GL_FALSE, 
+            stride, 
+            (void*)(4*i*sizeof(float)+globalOffset)
+        );
         glVertexAttribDivisor(location+i, attribDivisor);
     }
 

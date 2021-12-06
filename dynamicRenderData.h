@@ -215,8 +215,6 @@ protected:
     {
         delete[] entityIDs;
     }
-    size_t size()const{return entitySize;}
-    int end()const{return writeIndex;}
 
     int IDCounter=0;
     size_t entitySize;
@@ -226,6 +224,8 @@ protected:
 public:
     //virutal pipeline entrytickets
     virtual uniformContainer_list::pipelineFuncPtrs makeEntryTicket()=0;
+    int end()const{return writeIndex;}
+    size_t size()const{return entitySize;}
 
 
 
