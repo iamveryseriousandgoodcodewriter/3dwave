@@ -10,10 +10,7 @@
 #include "math/glm/gtx/euler_angles.hpp"
 #include "GPUbuffer.h"
 
-struct pipeline
-{
-    virtual void pipe(float);
-};
+
 
 struct unifromContPipe :public pipeline
 {
@@ -46,7 +43,7 @@ struct unifromContPipe :public pipeline
 
 //make common interface with other containers/objects for updateing and stuff
 struct uniformContainer;
-struct uniformContainer_list
+struct uniformContainer_list : public pipeline
 {
     enum pipelinetrafos:int{
         sort=0,
@@ -63,7 +60,10 @@ struct uniformContainer_list
         std::function<void()> GPU_upload;
     };
 
-
+    std::function<void(const float)> getPipe()
+    {
+        return [this](const float dt){this->pipe(dt);};
+    }
     /*
     void addContainer(
         const std::string name,
@@ -103,9 +103,10 @@ struct uniformContainer_list
         }
     }
 
-    void pipe()
+    void pipe(const float dt)
     {
         this->onSort();
+        this->onDtUpdate(dt);
         this->onInternalUpdate();
         this->onGPUUpload();
     }
@@ -134,8 +135,9 @@ T* allocateAndCopy(const size_t newSize, T* oldData, const int dataIndex)
 
 struct uniformContainer{
 protected:
-    uniformContainer( const size_t isize)
-    :entitySize(isize+isize%8),  entityIDs(new int[isize+isize%8]())
+    uniformContainer( const size_t isize, const int iuID)
+    :typeID(iuID), entitySize(isize+isize%8),  
+    entityIDs(new int[isize+isize%8]())
     {
         for(size_t i=0;i<entitySize;++i)
         {
@@ -209,7 +211,7 @@ protected:
 
 
     void sortWithData(std::function<void(int i, int* gather)> subSorts); 
-
+    void onBulkRemoval();
 
     ~uniformContainer()
     {
@@ -217,16 +219,20 @@ protected:
     }
 
     int IDCounter=0;
-    size_t entitySize;
     int* entityIDs;
     int writeIndex=0;
     std::vector<subBufferHandle> myGPUBuffer;
+private:
+    std::vector<int> deleteQue;
+    int typeID=-1;
+    size_t entitySize;
+    
 public:
     //virutal pipeline entrytickets
     virtual uniformContainer_list::pipelineFuncPtrs makeEntryTicket()=0;
     int end()const{return writeIndex;}
     size_t size()const{return entitySize;}
-
+    int getTypeID()const{return this->typeID;}
 
 
     //el printore
@@ -239,15 +245,6 @@ public:
         }
     }
 };
-
-
-
-
-
-
-
-
-
 
 
 

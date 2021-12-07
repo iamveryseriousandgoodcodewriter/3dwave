@@ -17,6 +17,129 @@ void printmat4(glm::mat4 mat)
     std::cout<<'\n'<<mat[0][3]<<mat[1][3]<<mat[2][3]<<mat[3][3];
 }
 
+struct oneVertexArraySetup
+{
+    oneVertexArraySetup(const subBufferHandle sbh, int idiv, int iloc)
+    :han(sbh), attribDivisor(idiv), location(iloc){}
+    subBufferHandle han;
+    int attribDivisor;
+    int location;
+};
+
+
+
+//this is works like this currently:
+//you make meshes, you put the meshes in the gpuBuffer
+//you make instances(uniforms), and put them in the GPUBuffer
+//    *this is by inheritance in the uniform_impl.h
+//you grab the subBufferhandles and call this->init with them
+//      *you have to know the attribDiv(obv)
+//      *the location is based on the shader you are using
+//you draw
+//:))
+
+//TODO():
+//  rework the drawable container
+//  make the pipeline concept from the uniform coantainer more generic?
+//  make an example and run it
+//  build a better abstraction for the uniformBufferObjects
+//  make everything nice and shiny(with loading functions and stuff like that)
+
+//hold all obj_containers in some meta way
+//add "relation-vector" to it, where you can specify 2 of these
+//containers and a way they want to interact(like compute collisions)
+
+
+//IDEAS():
+//  *un-link the construction and uploading of the data
+//      this way you can init the data and upload it to gpu when it is needed
+//  *make a function that produces a drawable, but hides everything that would be 
+//      needed for that(like the unifrom container creation  etc.)
+// maybe the drawable wants to hold all of the construction nessecary for it?
+//maybe not tho lol
+struct drawable{
+
+    drawable(GLuint ishader)
+    :shader(ishader)
+    {}
+public:
+
+    //both function below dont really get used in their intended way
+    //   by the construct drawable method
+    //  so rework those i guess
+    
+    //int addEntity();
+    void init(const size_t vertexCount, uniformContainer* entityArray, std::vector<oneVertexArraySetup> vertArrays);
+
+    /*links a subBuffer into this->vao, attrib divisor is for instncaing, location is the location in this->shader, for the vertexAttrib in tha array*/
+    void vertexArraySetup(const subBufferHandle buf, const int attribDivisor, const int location);
+
+    void setUniformFloat(const float f, const char* name)const;
+
+
+    void draw()const;
+    
+
+    template<typename cont, typename single>
+    int addEntity(const single Entity);
+    template<typename cont, typename single>
+    std::vector<int> addNEntity(const std::vector<single> NEntity);
+
+    void getInstanceCount(){this->instanceCount=myEntities->end();}
+    
+    //TODO grab the instance count from the uniform containers
+    //this is not easyly done tho as it would have to happen every frame
+    uniformContainer* myEntities=nullptr;
+    int instanceCount=0;
+    size_t vertexCnt;//for drawing
+    GLuint VAO=0;
+    GLenum drawMode=GL_TRIANGLES;
+    GLuint shader=0;
+};
+
+
+struct drawables_list : public pipeline{
+
+    drawable& add(std::string name, drawable d)
+    {
+        drawables.insert({name, d});
+        return drawables.at(name);
+    }
+
+    std::function<void(const float)> getPipe()
+    {
+
+        return [this](const float){this->getInstanceCountAndDraw();};
+    }
+
+    void getInstanceCountAndDraw()
+    {
+        for(auto& it: drawables)
+        {
+            it.second.getInstanceCount();
+            it.second.draw();
+        }
+    }
+
+    std::unordered_map<std::string, drawable> drawables;
+};
+
+
+template<typename cont, typename single>
+int drawable::addEntity(const single Entity)
+{
+    if(cont::myID!=myEntities->getTypeID())
+        return -1;
+    return ((cont*)myEntities)->add(Entity);
+}
+template<typename cont, typename single>
+std::vector<int> drawable::addNEntity(const std::vector<single> NEntity)
+{
+    if(cont::myID!=myEntities->getTypeID())
+        return std::vector<int>(-1);
+    return ((cont*)myEntities)->addN(NEntity);
+}
+
 
 
 

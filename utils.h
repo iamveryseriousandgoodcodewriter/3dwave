@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <random>
 #include <iostream>
+#include <functional>
 
 
 
@@ -144,7 +145,9 @@ struct bad_construction_exe
     enum : int{
         bad_gpu_subBufferHandle,
         bad_return,
-        bad_alloc
+        bad_alloc,
+        bad_argCnt,
+        bad_arg
     };
     bad_construction_exe(const int iID, const std::string imsg)
     :ID(iID), msg(imsg){}
@@ -155,12 +158,17 @@ struct bad_construction_exe
 struct terminal_exe
 {
     enum : int{
-        bad_alloc
+        bad_alloc,
+        bad_scene_construction
     };
     terminal_exe(const int iID, const std::string imsg)
     :ID(iID), msg(imsg){}
     int ID;
     std::string msg;
+};
+
+struct pipeline{
+    virtual std::function<void(const float)> getPipe()=0;
 };
 
 

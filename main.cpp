@@ -75,6 +75,80 @@ std::vector<glm::vec3> makevec3(float* data, int count)
     return ret;
 }
 
+drawable* constructDrawable(const std::string name, const GLuint shader, const int max_cnt, const uniformID uniformContainer,
+const std::vector<std::string> meshNames, scene& _scene);
+scene initTestScene()
+{
+    std::vector<drawable*> obj_handles;
+    scene* ret=nullptr;
+    try{
+        scene myScene(
+            {"drawables", "uniform_Containers"},
+            new drawables_list,
+            new uniformContainer_list
+        );
+        ret=&myScene;
+        constructDrawable(
+            "grid",
+            shaderManager::getInstance()->programs.at("gridShader"),
+            10000, uniformID::gridUniform,
+            {"grid"}, myScene
+        );
+        constructDrawable(
+            "polygon",
+            shaderManager::getInstance()->programs.at("testShader"),
+            100, uniformID::_uniform3d,
+            {"testVertex", "testColor"}, myScene
+        );
+    }
+    catch(bad_construction_exe& exe)
+    {
+        DEBUGMSG("\n "+exe.msg);
+        throw terminal_exe(terminal_exe::bad_scene_construction,
+        "cant init metaPipeline");
+    }
+    return *ret;
+}
+
+//this wants to be a little bit more automated:
+//  constructing the uniformContainers needs to happen more elegent
+//meshNames need to be given in the oreder of their shader location
+drawable* constructDrawable(const std::string name, const GLuint shader, const int max_cnt, const uniformID uniformContainerID,
+const std::vector<std::string> meshNames, scene& _scene)
+{
+    uniformContainer_list* ul=_scene.getByName<uniformContainer_list>("uniform_Containers");
+    drawables_list* dl=_scene.getByName<drawables_list>("drawables");
+    drawable& d=dl->add(name, drawable(shader));
+    size_t vCnt;//hack!!!
+    int i=0;
+    for(auto& it: meshNames)
+    {
+        vCnt=uploadMesh(it);
+        d.vertexArraySetup(masterContainer::subBuffers.at(it), 0, i++);
+    }
+
+    if(uniformContainerID==uniformID::gridUniform)
+    {
+        gridUniforms* gcont=new gridUniforms(max_cnt,name);
+        ul->addContainer(name+"_Dynamics", gcont);
+        d.init(vCnt, gcont, gcont->getVAOstats(name));
+    }
+    else if(uniformContainerID==uniformID::_uniform3d)
+    {
+        uniform3d* cont=new uniform3d(max_cnt, name);
+        ul->addContainer(name+"_Dynamics", cont);
+        d.init(vCnt, cont, cont->getVAOstats(name));
+    }
+    else
+    {
+        DEBUGMSG("\n constructDrawable called with bad uniformID");
+        throw bad_construction_exe(bad_construction_exe::bad_arg,
+        "drawableContsruction aborted");
+    }
+
+    return &d;
+}
+
 void EventMainLoop(bool& quit);
 void windowMainLoop(renderContext* context, mainControl& status);
 void testWithWindow();
@@ -158,76 +232,10 @@ void windowMainLoop(renderContext* context, mainControl& status)
     compileShaders();
     //makeGPUBuffers(); one could inititalzie some of theses upfront?
 
-    uniformContainer_list dynamic_data_list;
-    size_t vertCnt1, vertCnt2;
-    //TODO(): wrap this up in a func
-    try{
-        dynamic_data_list.addContainer(
-            "uniform3d_polygonDynamics",
-            new uniform3d(1000, "uniform3d_polygonDynamics")
-        );
-
-        //these dont really belong here cause they are very much static but well...
-        dynamic_data_list.addContainer(
-            "gridUniforms_",
-            new gridUniforms(10000, {"grid_trans", "grid_scale"})
-        );
-        vertCnt1=uploadMesh("testVertex");
-        uploadMesh("testColor");
-        vertCnt2=uploadMesh("grid");
-
-    }catch(bad_construction_exe& exe)
-    {
-        DEBUGMSG("\n bad construction_exe caught on uniform creation");
-        switch(exe.ID)
-        {
-            case bad_construction_exe::bad_gpu_subBufferHandle:
-                DEBUGMSG("\n"+exe.msg);
-                break;
-            case bad_construction_exe::bad_alloc:
-                DEBUGMSG("\n"+exe.msg);
-                throw terminal_exe(terminal_exe::bad_alloc, "");
-                break;
-            default: break;
-        }
-    }
-
-    drawable polygon(shaderManager::getInstance()->getShader("testShader"));
-    polygon.init(vertCnt1,
-        {
-        oneVertexArraySetup(masterContainer::subBuffers.at("testVertex"), 0, 0),
-        oneVertexArraySetup(masterContainer::subBuffers.at("testColor"), 0, 1),
-        oneVertexArraySetup(masterContainer::subBuffers.at("uniform3d_polygonDynamics"), 1, 2)
-        }
-    );
-
-    drawable grid(shaderManager::getInstance()->getShader("gridShader"));
-    grid.init(vertCnt2,
-        {
-            oneVertexArraySetup(masterContainer::subBuffers.at("grid"), 0, 0),
-            oneVertexArraySetup(masterContainer::subBuffers.at("grid_trans"), 1, 1),
-            oneVertexArraySetup(masterContainer::subBuffers.at("grid_scale"), 1, 2),
-        }
-    );
-    grid.drawMode=GL_POINTS;
-
-    
-    
     std::vector<int> ploygonUniformIDS;
     std::vector<int> subGridIDs;
-    
-
-    gridUniforms* lol=(gridUniforms*)dynamic_data_list.containers.at("gridUniforms_");
-    subGridIDs=lol->makeDiagonalSquare(2.0f);
-    grid.instanceCount=lol->end();
-    lol->onGPUUpload();
-
-        
     float* data=genOrigins(10, 20.0f, PI/20);
-
-    uniform3d* ref=(uniform3d*)dynamic_data_list.containers.at("uniform3d_polygonDynamics");
-
-    auto adderall=[](const std::vector<glm::vec3> pos){
+        auto adderall=[](const std::vector<glm::vec3> pos){
         std::vector<oneUniform3d> ret;
         for(auto it: pos)
         {
@@ -235,8 +243,19 @@ void windowMainLoop(renderContext* context, mainControl& status)
         }  
         return ret;
     };
-    ploygonUniformIDS=ref->addN(adderall(makevec3(data, 10)));
-    polygon.instanceCount=ref->end();
+
+
+    scene testScene=initTestScene();
+    
+    drawable* grid=&testScene.getByName<drawables_list>("drawables")->drawables.at("grid");
+    grid->drawMode=GL_POINTS;
+    subGridIDs=grid->addNEntity<gridUniforms>(
+        makeDiagonalGridSquare(2.0f, grid->myEntities->size()-grid->myEntities->end())
+    );
+
+    drawable* d=&testScene.getByName<drawables_list>("drawables")->drawables.at("polygon");    
+    ploygonUniformIDS=d->addNEntity<uniform3d>(adderall(makevec3(data, 10)));
+
 
     UBOwrapper origins("waveOrigins", 10, 10*4);
     origins.init(GL_STATIC_DRAW);
@@ -259,13 +278,12 @@ void windowMainLoop(renderContext* context, mainControl& status)
         if(test)
         {
         }
-        grid.setUniformFloat(getAlpha(dt, PI), "angle");
-        grid.setUniformFloat(observer::getInstance()->spike, "spike");
-        grid.setUniformFloat(observer::getInstance()->damp, "damp");
+        grid->setUniformFloat(getAlpha(dt, PI), "angle");
+        grid->setUniformFloat(observer::getInstance()->spike, "spike");
+        grid->setUniformFloat(observer::getInstance()->damp, "damp");
 
-        dynamic_data_list.pipe();
-        polygon.draw();
-        grid.draw();
+
+        testScene.update(dt);        
         
         SDL_GL_SwapWindow(context->getCWindow());
     }
@@ -304,5 +322,5 @@ void testInMainLoop()
 //called without a window
 void testMain()
 {
-    
+
 }

@@ -2,6 +2,10 @@
 #define UNIFORM_IMPL_H
 #include "masterContainer.h"
 
+enum uniformID : int{
+    _uniform3d,
+    gridUniform
+};
 
 struct oneUniform3d{
     oneUniform3d(const glm::vec3 t, const glm::vec3 r, const glm::vec3 s)
@@ -13,8 +17,10 @@ struct oneUniform3d{
 };
 struct uniform3d : public uniformContainer
 {
+    static const uniformID myID=uniformID::_uniform3d;
+
     uniform3d(const size_t isize, std::string name)
-    :uniformContainer(isize),trans(new glm::vec3[isize+isize%8]),rot(new glm::vec3[isize+isize%8]()), scale(new glm::vec3[isize+isize%8]),
+    :uniformContainer(isize, myID),trans(new glm::vec3[isize+isize%8]),rot(new glm::vec3[isize+isize%8]()), scale(new glm::vec3[isize+isize%8]),
     model(new glm::mat4[isize+isize%8])
     {
 
@@ -33,7 +39,7 @@ struct uniform3d : public uniformContainer
         this->myGPUBuffer.push_back(sbh);
         this->myGPUBuffer[0].buffer->init_subBuffer(this->myGPUBuffer[0].subBufferID,
         16, 0);
-        masterContainer::subBuffers.insert({name, myGPUBuffer[0]});
+        masterContainer::subBuffers.insert({name+"_model", myGPUBuffer[0]});
     }
 
     void remove(const int ID)
@@ -172,6 +178,15 @@ struct uniform3d : public uniformContainer
              this->writeIndex*16,
               (float*)model);
     }
+
+    std::vector<oneVertexArraySetup> getVAOstats(std::string name)const
+    {
+        std::vector<oneVertexArraySetup> ret=
+        {
+            oneVertexArraySetup(masterContainer::subBuffers.at(name+"_model"), 1, 2)
+        };
+        return ret;
+    }
     
     uniformContainer_list::pipelineFuncPtrs makeEntryTicket()
     {
@@ -192,11 +207,22 @@ struct uniform3d : public uniformContainer
 };
 
 
+struct oneGrid{
+
+    oneGrid(const glm::vec2 ipos, const float iscale)
+    :pos(ipos), scale(iscale){}
+
+    glm::vec2 pos;
+    const float scale;
+};
 
 struct gridUniforms : public uniformContainer
 {
-    gridUniforms(const size_t count, std::vector<std::string> names)
-    :uniformContainer(count), trans(new glm::vec2[count+count%8]), scale(new float[count+count%8])
+
+    static const uniformID myID=uniformID::gridUniform;
+
+    gridUniforms(const size_t count, std::string name)
+    :uniformContainer(count, myID), trans(new glm::vec2[count+count%8]), scale(new float[count+count%8])
     {
         //trans
         if(!trans||!scale)
@@ -213,7 +239,7 @@ struct gridUniforms : public uniformContainer
         }
         this->myGPUBuffer.push_back(sbh);
         this->myGPUBuffer[0].buffer->init_subBuffer(this->myGPUBuffer[0].subBufferID, 2, 0);
-        masterContainer::subBuffers.insert({names[0], myGPUBuffer[0]});
+        masterContainer::subBuffers.insert({name+"_pos", myGPUBuffer[0]});
 
         //scale
         sbh=masterContainer::_GPUBuffers.static_draw.newSubBuffer(count);
@@ -225,8 +251,19 @@ struct gridUniforms : public uniformContainer
         }
         this->myGPUBuffer.push_back(sbh);
         this->myGPUBuffer[1].buffer->init_subBuffer(this->myGPUBuffer[1].subBufferID, 1, 0);
-        masterContainer::subBuffers.insert({names[1], myGPUBuffer[1]});
+        masterContainer::subBuffers.insert({name+"_scale", myGPUBuffer[1]});
 
+    }
+    int add(const oneGrid g)
+    {
+        return this->add(g.pos, g.scale);
+    }
+    std::vector<int> addN(const std::vector<oneGrid> g)
+    {
+        std::vector<int> ret;
+        for(auto it:g)
+            ret.push_back(this->add(it));
+        return ret;
     }
     int add(const glm::vec2 pos, const float iscale)
     {
@@ -242,55 +279,7 @@ struct gridUniforms : public uniformContainer
     //makes a big grid of little small grid, each of scale
     //side is how big one side should be
     //if left -1 the whole container will be used
-    std::vector<int> makeDiagonalSquare(const float scale, int middle=-1)
-    {
-        std::vector<int> ret;
-        //check the maximum middle size that fits
-        int max=entitySize-writeIndex;
-        int i=0, currMiddle=1;
-        while(max-currMiddle>0)
-        {
-            currMiddle+=2;
-            max-=(i+=2)*2;
-        }
-
-        //check if we exeed that
-        int count;
-        if(middle==-1||middle>currMiddle)
-        {
-            middle=currMiddle;
-        }
-
-        //makes a line of lineSize, offset into y-dir by scale*y
-        auto lineBuilder=[scale, this, &ret](int lineSize, int y){
-            ret.push_back(add({0.0f,scale*y}, scale));
-            for(int i=1, k=1;i<lineSize;i+=2, k++)
-            {
-                ret.push_back(add({scale*k, scale*y}, scale));
-                ret.push_back(add({-scale*k, scale*y}, scale));
-            }
-        };
-        
-        //builds the grid from lines recursivly
-        std::function<int(int,int)> builder=
-        [lineBuilder, &builder](int lineSize, int y)->int{
-            if(lineSize<1)
-            {
-                return lineSize;
-            }
-            else
-            {
-                lineBuilder(lineSize, y);
-                lineBuilder(lineSize, -y);
-                return builder(lineSize-2, y+1);
-            }
-        };
-
-        lineBuilder(middle, 0);
-        builder(middle-2, 1);
-
-        return ret;
-    }
+   
     void sort()
     {
         auto vec2Sort=[](int i, int* gather, glm::vec2* data)
@@ -336,6 +325,17 @@ struct gridUniforms : public uniformContainer
               (float*)scale);
     }
     
+    std::vector<oneVertexArraySetup> getVAOstats(const std::string name)const
+    {
+        std::vector<oneVertexArraySetup> ret=
+        {
+            oneVertexArraySetup(masterContainer::subBuffers.at(name+"_pos"), 1, 1),
+            oneVertexArraySetup(masterContainer::subBuffers.at(name+"_scale"), 1, 1)
+        };
+        return ret;
+    }
+
+
     uniformContainer_list::pipelineFuncPtrs makeEntryTicket(){
         uniformContainer_list::pipelineFuncPtrs p;
         p.sort=std::bind(&gridUniforms::sort, std::ref(*this));
@@ -348,5 +348,53 @@ struct gridUniforms : public uniformContainer
     glm::vec2* trans;
     float* scale;
 };
+
+
+//make a diamond from single grid-units, all of size scale
+//max is the max number entities you have left(maxEntities-writeIndex)
+std::vector<oneGrid> makeDiagonalGridSquare(const float scale, int max, int middle=-1 )
+{
+    std::vector<oneGrid> ret;
+    //check the maximum middle size that fits
+    int i=0, currMiddle=1;
+    while(max-currMiddle>0)
+    {
+        currMiddle+=2;
+        max-=(i+=2)*2;
+    }
+    //check if we exeed that
+    int count;
+    if(middle==-1||middle>currMiddle)
+    {
+        middle=currMiddle;
+    }
+    //makes a line of lineSize, offset into y-dir by scale*y
+    auto lineBuilder=[scale, &ret](int lineSize, int y){
+        ret.push_back(oneGrid({0.0f,scale*y}, scale));
+        for(int i=1, k=1;i<lineSize;i+=2, k++)
+        {
+            ret.push_back(oneGrid({scale*k, scale*y}, scale));
+            ret.push_back(oneGrid({-scale*k, scale*y}, scale));
+        }
+    };
+    
+    //builds the grid from lines recursivly
+    std::function<int(int,int)> builder=
+    [lineBuilder, &builder](int lineSize, int y)->int{
+        if(lineSize<1)
+        {
+            return lineSize;
+        }
+        else
+        {
+            lineBuilder(lineSize, y);
+            lineBuilder(lineSize, -y);
+            return builder(lineSize-2, y+1);
+        }
+    };
+    lineBuilder(middle, 0);
+    builder(middle-2, 1);
+    return ret;
+}
 
 #endif //UNIFORM_IMPL_H

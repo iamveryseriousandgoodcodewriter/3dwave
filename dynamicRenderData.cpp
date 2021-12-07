@@ -65,14 +65,53 @@ int uniformContainer::add()
 void uniformContainer::remove(const int ID)
 {
     if(ID==-1)return;
-    int i=0;
-    while(entityIDs[i++]<ID);
-    if(entityIDs[i-1]==ID)//some security cause oyu never know
-        entityIDs[i-1]=-1;
+    this->deleteQue.push_back(ID);
+    
+}
+
+//opt: look at how many get rmved compared to how many exist and choose an appr
+//      algo, like when almost all get deleted it might be better to sort           deletions and then just remove all
+void uniformContainer::onBulkRemoval()
+{
+    for(int& id : deleteQue)
+    {
+        int end=writeIndex-1, mid=writeIndex-1/2;
+        while(id!=entityIDs[mid]&&end!=mid)
+        {
+            if(id<entityIDs[mid])
+            {
+                end=entityIDs[mid];
+                entityIDs[mid]/=2;
+            }
+            else if(id>entityIDs[mid])
+            {
+                entityIDs[mid]+=(end-entityIDs[mid])/2;
+            }
+        }
+        if(id!=entityIDs[mid])
+        {
+            id=writeIndex;
+        }
+        else{
+            id=mid;
+        }
+    }
+    for(int id:deleteQue)
+    {
+        entityIDs[id]=-1;
+    }
+    deleteQue.clear();
 }
 
 void uniformContainer::sortWithData(std::function<void(int, int*)> subSorts)
 {
+    if(deleteQue.empty())
+    {
+        return;
+    }
+    
+    onBulkRemoval();
+
     int i=0, k=0, j;
     int gather[8];
     int value[8];

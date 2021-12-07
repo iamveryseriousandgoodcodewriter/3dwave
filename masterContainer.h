@@ -15,25 +15,27 @@
 //and this takes care of calling those and storing the ptrs
 //or like list heads for updating stuff
 
+
 template<typename ...myargs>
-struct drawableContainer
+struct metaPipeline
 {
     
-    
-    
-    drawableContainer(std::vector<std::string> inames, myargs*... initList )
-    :_drawables(std::forward_as_tuple(initList...))
+    //make sure all args provide a getPipe() func as seen in the pipeline struct    
+    metaPipeline(std::vector<std::string> inames, myargs*... initList )
+    :_pipes(std::forward_as_tuple(initList...))
     {
         if(sizeof...(myargs)!=inames.size())
         {
-            DEBUGMSG("\n error in drawablecontainer init:argcnt doenst match namecnt");
+            DEBUGMSG("\n metaPipeline::Ctor=>argcnt doenst match namecnt");
+            throw bad_construction_exe(bad_construction_exe::bad_argCnt,
+            "\n metaPipeline Construction aborted");
         }
         int i=0;
         for(auto& it: inames)
         {
             names.insert({it, i++});
         }
-        onInit<0, myargs...>(_drawables);
+        onInit<0, myargs...>(_pipes);
     }
 
 
@@ -42,7 +44,7 @@ struct drawableContainer
     T* getByName(const std::string name)
     {
         int i=names.at(name);
-        T* mytee=onSearch<0, T, myargs...>(_drawables, i);
+        T* mytee=onSearch<0, T, myargs...>(_pipes, i);
         //assert((std::is_same<T, std::get<i>(_drawables)::type>));
         return mytee;
     } 
@@ -50,22 +52,17 @@ struct drawableContainer
 
 
 
-    void update()const
+    void update(const float dt)const
     {
-
-    }
-
-    void draw()
-    {
-        for(auto it: drawCalls)
+        for(auto it: onSingleFrame)
         {
-            it();
+            it(dt);
         }
     }
 
-
-    std::vector<std::function<void()>> drawCalls;
-    std::tuple<myargs*...> _drawables;
+    //could put in init funcs
+    std::vector<std::function<void(const float)>> onSingleFrame;
+    std::tuple<myargs*...> _pipes;
     std::unordered_map<std::string, int> names;
 
 private:
@@ -77,8 +74,9 @@ private:
     inline typename std::enable_if<I<sizeof...(args), void>::type
     onInit(std::tuple<args*...>& t)
     { 
-        std::function<void()> f=std::get<I>(t)->getDrawFunc();
-        drawCalls.push_back(f);
+        std::function<void(const float)> f=std::get<I>(t)->getPipe();
+        if(f)
+            onSingleFrame.push_back(f);
         onInit<I+1, args...>(t);
     }
     template<std::size_t I,typename T, typename... args>
@@ -108,7 +106,7 @@ private:
         }
     }
 };
-
+typedef metaPipeline<drawables_list, uniformContainer_list> scene;
 
 struct masterContainer{
 
@@ -194,6 +192,13 @@ void compileShaders()
     shaderManager::getInstance()->makeProgram("testShader",solidColorCubeVertexShader, solidColorCubeFragmentShader);
     shaderManager::getInstance()->makeProgram("gridShader",gridShaderWithWave_vertex, solidColorCubeFragmentShader);
 }
+
+
+
+
+
+
+
 
 
 

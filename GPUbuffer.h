@@ -15,15 +15,6 @@
 #include "mesh.h"
 
 
-
-
-//1. request buffer from GPU-buffer store
-//2. make subbuffer in it, with a certain mesh
-//3. build vaos from subbuffers i just made
-
-
-
-
 struct subBuffer{
     friend struct GPUbuffer;
 
@@ -120,6 +111,7 @@ constexpr size_t MAX_BUFFERSIZE_SUM=1000000000/sizeof(float);
 //opt: *sort the list so we know where the full buffers are and dont check them
 //      *make like a list of open subBuffer positions and fill those on demand
 //      *cache the allocations and do them in free time
+//      *make some sort of metric, reasoning about if we should sort the buffer
 struct gpuBufferList
 {
 
@@ -178,91 +170,6 @@ struct gpuBufferTree_head
 #define NOTBIT64(nr, bit) nr&=!(1<<bit)
 //#include <immintrin.h>
 //#include <avx2intrin.h>
-
-
-struct oneVertexArraySetup
-{
-    oneVertexArraySetup(const subBufferHandle sbh, int idiv, int iloc)
-    :han(sbh), attribDivisor(idiv), location(iloc){}
-    subBufferHandle han;
-    int attribDivisor;
-    int location;
-};
-
-
-//this is works like this currently:
-//you make meshes, you put the meshes in the gpuBuffer
-//you make instances(uniforms), and put them in the GPUBuffer
-//    *this is by inheritance in the uniform_impl.h
-//you grab the subBufferhandles and call this->init with them
-//      *you have to know the attribDiv(obv)
-//      *the location is based on the shader you are using
-//you draw
-//:))
-
-//TODO():
-//  rework the drawable container
-//  make the pipeline concept from the uniform coantainer more generic?
-//  make an example and run it
-//  build a better abstraction for the uniformBufferObjects
-//  make everything nice and shiny(with loading functions and stuff like that)
-
-//IDEAS():
-//  *un-link the construction and uploading of the data
-//      this way you can init the data and upload it to gpu when it is needed
-//  *make a function that produces a drawable, but hides everything that would be 
-//      needed for that(like the unifrom container creation  etc.)
-// maybe the drawable wants to hold all of the construction nessecary for it?
-//maybe not tho lol
-struct drawable{
-
-    drawable(GLuint ishader)
-    :shader(ishader)
-    {}
-public:
-
-    
-    //int addEntity();
-    void init(const size_t vertexCount, std::vector<oneVertexArraySetup> vertArrays);
-
-    /*links a subBuffer into this->vao, attrib divisor is for instncaing, location is the location in this->shader, for the vertexAttrib in tha array*/
-    void vertexArraySetup(const subBufferHandle buf, const int attribDivisor, const int location);
-
-    void setUniformFloat(const float f, const char* name)
-    {
-        glUseProgram(this->shader);
-        glUniform1f(glGetUniformLocation(this->shader, name), f);
-        glUseProgram(0);
-    }
-
-
-    void draw()const
-    {
-        glUseProgram(this->shader);
-        glBindVertexArray(this->VAO);
-        glDrawArraysInstanced(this->drawMode, 0, vertexCnt, this->instanceCount);
-        //glDrawArrays(this->drawMode, 0, vertexCnt);
-        glBindVertexArray(0);
-    }
-
-    std::function<void()> getDrawFunc()const;
-
-
-
-    //TODO grab the instance count from the uniform containers
-    //this is not easyly done tho as it would have to happen every frame
-    int instanceCount=0;
-    size_t vertexCnt;//for drawing
-    GLuint VAO=0;
-    GLenum drawMode=GL_TRIANGLES;
-    GLuint shader=0;
-};
-
-
-
-
-
-
 
 #endif //GPUBUFFER_H
 
