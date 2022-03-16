@@ -3,7 +3,7 @@
 #include "application.h"
 
 
-//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
+
 
 //UTILS STATICS
 std::random_device rng::r;
