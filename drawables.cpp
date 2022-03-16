@@ -1,16 +1,7 @@
 #include "drawables.h"
 
 
-/*
-================================================================================
-================================================================================
-================================================================================
-==================================DRAWABLE======================================
-================================================================================
-================================================================================
-================================================================================
-================================================================================
-*/
+
 
 
 void drawable::init(const size_t vertexCount, uniformContainer* entityArray, std::vector<oneVertexArraySetup> vertArrays)
@@ -45,14 +36,14 @@ void drawable::vertexArraySetup(const subBufferHandle buf, const int attribDivis
         glGenVertexArrays(1, &this->VAO);
     }
     glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, buf.buffer->bufferID);
+    glBindBuffer(GL_ARRAY_BUFFER, buf.buffer->getBufferID());
 
     for(int i=0; i<attribPtrCnt;++i)
     {
         glEnableVertexAttribArray(location+i);
         glVertexAttribPointer(location+i, 
             vertexVectorSizeHelper(perVertexSize-(4*(i+1))), 
-            buf.buffer->datatype, GL_FALSE, 
+            buf.buffer->getDataType(), GL_FALSE, 
             stride, 
             (void*)(4*i*sizeof(float)+globalOffset)
         );
@@ -64,7 +55,7 @@ void drawable::vertexArraySetup(const subBufferHandle buf, const int attribDivis
 }
 int attribPtrCntHelper(const int perVertexSize)
 {
-    if(!perVertexSize%4)
+    if(!(perVertexSize%4))
     {
         return perVertexSize/4;
     }
@@ -96,6 +87,102 @@ void drawable::draw()const
     glBindVertexArray(0);
 }
 
+
+
+
+
+
+const GLchar* solidColorCubeVertexShader=R"glsl(
+    #version 420 core
+    layout (location=0) in vec3 pos;
+    layout (location=1) in vec4 color;
+    layout (location=2) in mat4 model;
+
+    //global camera mat
+    layout (std140, binding = 0) uniform cameraMat
+    {
+        mat4 projection;
+        mat4 view;
+    }camera;
+
+    out vec4 v_out_color;
+
+    void main()
+    {
+        
+        gl_Position=camera.projection*camera.view*model*vec4(pos, 1.0f);
+        v_out_color=color;
+    }
+)glsl";
+
+
+const GLchar* solidColorCubeFragmentShader=R"glsl(
+    #version 420 core
+
+    in vec4 v_out_color;
+
+    out vec4 final_color;
+    
+    void main()
+    {
+        final_color=v_out_color;
+    }
+
+)glsl";
+
+const GLchar* gridShaderWithWave_vertex=R"glsl(
+    #version 420 core
+
+    layout (location=0) in vec2 pos;
+    layout (location=1) in vec2 trans;
+    layout (location=2) in float scale;
+
+    uniform float angle;
+    uniform float damp;//the smaller this is the more dampend
+    uniform float spike;//the smaller this is the higher they spike
+
+    layout (std140, binding = 0) uniform cameraMat
+    {
+        mat4 projection;
+        mat4 view;
+    }camera;
+
+    layout(std140, binding = 10) uniform waveOrigin
+    {
+        vec3 posPhase[10];
+    }origin;
+
+
+    out vec4 v_out_color;
+
+    float getAccZ(in float posx, in float posy, in float alpha, in vec3 org)
+    {
+
+       vec2 originDis=vec2(posx,posy)-vec2(org.x, org.y);
+
+       float r=sqrt(originDis.x*originDis.x+originDis.y*originDis.y);
+        
+       return -sin(r-alpha+org.z)*(damp/(r+spike));
+    }
+
+    void main()
+    {
+
+
+        vec4 final_pos=vec4(1.0f,1.0f,0.0f,1.0f);
+        final_pos.x=(pos.x*scale)+trans.x;
+        final_pos.y=(pos.y*scale)+trans.y;
+        for(int i=0;i<10;++i)
+        {
+            final_pos.z+=getAccZ(final_pos.x, final_pos.y, angle, origin.posPhase[i]);
+        }
+        gl_Position=camera.projection*camera.view*final_pos;
+
+        v_out_color=vec4(0.75f, 0.75f, 0.75f, 0.75f);
+    }
+
+
+)glsl";
 
 
 

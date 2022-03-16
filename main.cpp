@@ -1,8 +1,9 @@
-//#include "context.h"
 #include "context.h"
-#include "masterContainer.h"
 #include "observer.h"
-#include "uniform_impl.h"
+#include "application.h"
+
+
+//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
 
 //UTILS STATICS
 std::random_device rng::r;
@@ -11,10 +12,8 @@ std::mt19937_64 rng::mt{r()};
 std::vector<GLuint> UBOwrapper::bindingPoints={0};
 
 //MASTER CONTAINER STATICS
-gpuBufferTree_head masterContainer::_GPUBuffers;
-std::unordered_map<std::string, drawable*> masterContainer::_drawables;
-std::unordered_map<std::string, uniformContainer*> masterContainer::_uniformContainers;
-std::unordered_map<std::string, subBufferHandle> masterContainer::subBuffers;
+gpuBufferTree GPUmasterContainer::_GPUBuffers;
+std::unordered_map<std::string, subBufferHandle> GPUmasterContainer::subBuffers;
 struct mainControl : public controlFlags32
 {
     enum : int{
@@ -25,129 +24,8 @@ struct mainControl : public controlFlags32
     };
 };
 
-/*
-    1. init gpu buffer
-    2. gen some meshes(put in mesh container, save ids)
-    3. compile the shaders
-    4. set up child class of drawable
-    5. draw?
-*/
 
 
-float getAlpha(const float dt, const float w)
-{
-    static float alpha=0;
-    alpha+=w*dt;
-
-    if(alpha>2*PI)
-    {
-        alpha=0;
-    }
-
-    return alpha;
-}
-
-float* genOrigins(int count, float r, float dphi)
-{
-    float dang=2*PI/count;
-    float* data=(float*)malloc(count*4*sizeof(float));
-    float* dp=data;
-    for(int i=0;i<count;++i)
-    {
-        *dp++=r*cos(dang*i);
-        *dp++=r*sin(dang*i);
-        *dp++=dphi*i+1.1234567f;
-        *dp++=0;
-    }
-    dp=data;
-    
-    return data;
-}
-
-std::vector<glm::vec3> makevec3(float* data, int count)
-{
-    std::vector<glm::vec3> ret;
-    for(int i=0; i<count;++i, data+=4)
-    {
-        glm::vec3 v(*data, *(data+1), 10.0f);
-        ret.push_back(v);
-    }
-    return ret;
-}
-
-drawable* constructDrawable(const std::string name, const GLuint shader, const int max_cnt, const uniformID uniformContainer,
-const std::vector<std::string> meshNames, scene& _scene);
-scene initTestScene()
-{
-    std::vector<drawable*> obj_handles;
-    scene* ret=nullptr;
-    try{
-        scene myScene(
-            {"drawables", "uniform_Containers"},
-            new drawables_list,
-            new uniformContainer_list
-        );
-        ret=&myScene;
-        constructDrawable(
-            "grid",
-            shaderManager::getInstance()->programs.at("gridShader"),
-            10000, uniformID::gridUniform,
-            {"grid"}, myScene
-        );
-        constructDrawable(
-            "polygon",
-            shaderManager::getInstance()->programs.at("testShader"),
-            100, uniformID::_uniform3d,
-            {"testVertex", "testColor"}, myScene
-        );
-    }
-    catch(bad_construction_exe& exe)
-    {
-        DEBUGMSG("\n "+exe.msg);
-        throw terminal_exe(terminal_exe::bad_scene_construction,
-        "cant init metaPipeline");
-    }
-    return *ret;
-}
-
-//this wants to be a little bit more automated:
-//  constructing the uniformContainers needs to happen more elegent
-//meshNames need to be given in the oreder of their shader location
-drawable* constructDrawable(const std::string name, const GLuint shader, const int max_cnt, const uniformID uniformContainerID,
-const std::vector<std::string> meshNames, scene& _scene)
-{
-    uniformContainer_list* ul=_scene.getByName<uniformContainer_list>("uniform_Containers");
-    drawables_list* dl=_scene.getByName<drawables_list>("drawables");
-    drawable& d=dl->add(name, drawable(shader));
-    size_t vCnt;//hack!!!
-    int i=0;
-    for(auto& it: meshNames)
-    {
-        vCnt=uploadMesh(it);
-        d.vertexArraySetup(masterContainer::subBuffers.at(it), 0, i++);
-    }
-
-    if(uniformContainerID==uniformID::gridUniform)
-    {
-        gridUniforms* gcont=new gridUniforms(max_cnt,name);
-        ul->addContainer(name+"_Dynamics", gcont);
-        d.init(vCnt, gcont, gcont->getVAOstats(name));
-    }
-    else if(uniformContainerID==uniformID::_uniform3d)
-    {
-        uniform3d* cont=new uniform3d(max_cnt, name);
-        ul->addContainer(name+"_Dynamics", cont);
-        d.init(vCnt, cont, cont->getVAOstats(name));
-    }
-    else
-    {
-        DEBUGMSG("\n constructDrawable called with bad uniformID");
-        throw bad_construction_exe(bad_construction_exe::bad_arg,
-        "drawableContsruction aborted");
-    }
-
-    return &d;
-}
 
 void EventMainLoop(bool& quit);
 void windowMainLoop(renderContext* context, mainControl& status);
@@ -209,6 +87,8 @@ int main(int argc, char** argv)
         }
 
         //TODO(): cleanup memory?
+        //this would maybe need some extensive checking to not call delete on a
+        //nullptr
     }
 
 
@@ -232,38 +112,17 @@ void windowMainLoop(renderContext* context, mainControl& status)
     compileShaders();
     //makeGPUBuffers(); one could inititalzie some of theses upfront?
 
-    std::vector<int> ploygonUniformIDS;
+    std::vector<int> polygonUniformIDS;
     std::vector<int> subGridIDs;
-    float* data=genOrigins(10, 20.0f, PI/20);
-        auto adderall=[](const std::vector<glm::vec3> pos){
-        std::vector<oneUniform3d> ret;
-        for(auto it: pos)
-        {
-            ret.push_back(oneUniform3d(it, glm::vec3(0.0f), glm::vec3(2.0f)));
-        }  
-        return ret;
-    };
-
-
-    scene testScene=initTestScene();
     
-    drawable* grid=&testScene.getByName<drawables_list>("drawables")->drawables.at("grid");
-    grid->drawMode=GL_POINTS;
-    subGridIDs=grid->addNEntity<gridUniforms>(
-        makeDiagonalGridSquare(2.0f, grid->myEntities->size()-grid->myEntities->end())
-    );
-
-    drawable* d=&testScene.getByName<drawables_list>("drawables")->drawables.at("polygon");    
-    ploygonUniformIDS=d->addNEntity<uniform3d>(adderall(makevec3(data, 10)));
 
 
-    UBOwrapper origins("waveOrigins", 10, 10*4);
-    origins.init(GL_STATIC_DRAW);
-    origins.updateUBO(data);
-    free(data);
+    scene* testScene=initTestScene();
+    drawable* grid=populateTestScene(testScene, subGridIDs, polygonUniformIDS);
+    
 
 
-    observer::getInstance()->init();
+    observer::getInstance()->init(grid);
 
     int i=0;
     while(!quit)
@@ -283,10 +142,17 @@ void windowMainLoop(renderContext* context, mainControl& status)
         grid->setUniformFloat(observer::getInstance()->damp, "damp");
 
 
-        testScene.update(dt);        
+        testScene->update(dt);        
         
         SDL_GL_SwapWindow(context->getCWindow());
     }
+
+    //needs to cleanup now
+
+    clearScene(testScene);
+    //call delete on all GPUbuffer_lists in the GPUbufferTree
+    GPUmasterContainer::_GPUBuffers.deleteAll();
+
 }
 
 void EventMainLoop(bool& quit)

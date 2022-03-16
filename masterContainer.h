@@ -39,7 +39,7 @@ struct metaPipeline
     }
 
 
-    //if your name is not on the list stay THE FUCK away from this
+    //if your name is not on the list stay away from this
     template<typename T>
     T* getByName(const std::string name)
     {
@@ -108,95 +108,19 @@ private:
 };
 typedef metaPipeline<drawables_list, uniformContainer_list> scene;
 
-struct masterContainer{
-
+struct GPUmasterContainer{
 
     void free()
     {
         //dont need this yet
     }
 
-    static bool addGPUBuffer(const std::string name, const size_t size, const GLenum drawType)
-    {
-        GPUbuffer buf(size, GL_FLOAT);
-        bool isGood=buf.init(drawType);
+    static gpuBufferTree _GPUBuffers;
 
-        //this looks stupid but we cant add if its not valid???
-        if(!isGood)
-        {
-            return false;
-        }
-        //_GPUBuffers.insert({name, buf});
-        return isGood;
-    }
-
-    static gpuBufferTree_head _GPUBuffers;
-    //static std::unordered_map<std::string, GPUbuffer> _GPUBuffers;
-    static std::unordered_map<std::string, drawable*> _drawables;
-    static std::unordered_map<std::string, uniformContainer*> _uniformContainers;
+    //not yet utilized, but intended to provide an easy way to reuse the same sub-buffer in a different entity
+    //this would then rely on the uniformContainers to have the same entity count at all times
     static std::unordered_map<std::string, subBufferHandle> subBuffers;
 };
-inline
-void buildMeshes()
-{
-    meshContainer::getInstance()->addMesh(allocateMeshPos(), "testVertex");
-    meshContainer::getInstance()->addMesh(allocateMeshColor(), "testColor");
-    meshContainer::getInstance()->addMesh(allocateSubGridMesh(10), "grid");
-}
-//uploads a mesh into gpu-space and saves it under name in the map
-//returns: the vertex count of the uploaded mesh
-inline
-size_t uploadMesh(const std::string name)
-{
-    mesh m=meshContainer::getInstance()->getMesh(name);
-    if(!m.data)
-    {
-        throw bad_construction_exe(bad_construction_exe::bad_return,
-        "upload of mesh failed: mesh doesnt exist name: "+name);
-    }
-    subBufferHandle sbh=masterContainer::_GPUBuffers.static_draw.newSubBuffer(m.size);
-    if(!sbh.buffer)
-    {
-        throw bad_construction_exe(bad_construction_exe::bad_gpu_subBufferHandle,
-        "upload of mesh failed: bad subBufferHandle name: "+name);
-    }
-    sbh.buffer->init_subBuffer(sbh.subBufferID, m.perVertexCount, 0, m.data, m.size);
-    masterContainer::subBuffers.insert({name, sbh});
-
-    return m.getVertexCount();
-}
-//uploads a mesh into gpu-space and saves it under name in the map
-//returns: the vertex count of the uploaded mesh
-inline
-size_t uploadMesh(const std::string name, mesh m)
-{
-    if(!m.data)
-    {
-        throw bad_construction_exe(bad_construction_exe::bad_return,
-        "upload of mesh failed: mesh doesnt exist name: "+name);
-    }
-    subBufferHandle sbh=masterContainer::_GPUBuffers.static_draw.newSubBuffer(m.size);
-    if(!sbh.buffer)
-    {
-        throw bad_construction_exe(bad_construction_exe::bad_gpu_subBufferHandle,
-        "upload of mesh failed: bad subBufferHandle name: "+name);
-    }
-    sbh.buffer->init_subBuffer(sbh.subBufferID, m.perVertexCount, 0, m.data, m.size);
-    masterContainer::subBuffers.insert({name, sbh});
-
-    return m.getVertexCount();
-}
-inline
-void compileShaders()
-{
-    shaderManager::getInstance()->makeProgram("testShader",solidColorCubeVertexShader, solidColorCubeFragmentShader);
-    shaderManager::getInstance()->makeProgram("gridShader",gridShaderWithWave_vertex, solidColorCubeFragmentShader);
-}
-
-
-
-
-
 
 
 

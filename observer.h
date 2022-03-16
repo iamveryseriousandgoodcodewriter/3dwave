@@ -5,9 +5,9 @@
 #include "math/glm/glm.hpp"
 #include "math/glm/ext/matrix_transform.hpp"
 #include "math/glm/ext/matrix_clip_space.hpp"
+#include "utils.h"
+#include "uniform_impl.h"
 
-
-#define PI 3.14159265359f
 
 struct observer{
 
@@ -35,9 +35,9 @@ struct observer{
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
     }
 
-    void init()
+    void init(drawable* igrid)
     {
-        position =glm::vec3(-10.0f, .0f, 200.0f);
+        position =glm::vec3(-10.0f, .0f, 20.0f);
         direction=glm::vec3(1.0f, 0.0f, .0f);
 
         this->View=glm::lookAt(
@@ -60,6 +60,7 @@ struct observer{
         //this->View=glm::mat4(1.0f);
         this->setupUBO();
         this->updateUBO();
+        this->grid=igrid;
     }
 
     
@@ -122,6 +123,24 @@ struct observer{
             {
                 damp-=0.1f;
             }
+            else if(e.key.keysym.sym==SDLK_1)
+            {
+                this->grid->drawMode=GL_POINTS;
+            }
+            else if(e.key.keysym.sym==SDLK_2)
+            {
+                this->grid->drawMode=GL_LINE_LOOP;
+            }
+            else if(e.key.keysym.sym==SDLK_3)
+            {//doesnt really work because the grid-pos is scale-dependant
+                gridUniforms* ptr=(gridUniforms*)this->grid->myEntities;
+                ptr->incrementScale(1.0f);
+            }
+            else if(e.key.keysym.sym==SDLK_4)
+            {
+                gridUniforms* ptr=(gridUniforms*)this->grid->myEntities;
+                ptr->incrementScale(-1.0f);
+            }
         }
         else if(e.type==SDL_KEYUP)
         {
@@ -174,7 +193,7 @@ struct observer{
     glm::vec3 position;//these tell me where im standing
     float a_max=0.01f;
     float a=0;//need angle vel for looking around
-    float v_max=3.5f;
+    float v_max=10.5f;
     float v=0;
 
     glm::vec3 direction;//these tell me where im looking
@@ -187,8 +206,11 @@ struct observer{
     //put actual values here
 
 
+    drawable* grid;
     float damp=5.0f;
     float spike=2.0005f;
+
+
 
 private:
     observer()=default;

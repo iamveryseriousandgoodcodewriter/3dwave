@@ -5,7 +5,7 @@
 #include <random>
 #include <iostream>
 #include <functional>
-
+#define PI 3.14159265359f
 
 
 class timer{

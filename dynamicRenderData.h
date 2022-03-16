@@ -12,36 +12,12 @@
 
 
 
-struct unifromContPipe :public pipeline
-{
-    struct pipelineFuncPtrs
-    {
-        std::function<void()> sort;
-        std::function<void()> internal;
-        std::function<void(float)> dt;
-    };
-
-    void pipe(float dt)
-    {
-        
-        for(auto it: sort_stage)
-            it();
-    
-        for(auto it:dt_update_stage)
-            it(dt);
-   
-        for(auto it: internal_update_stage)
-            it();
-    
-    }
-
-    std::vector<std::function<void()>> sort_stage;
-    std::vector<std::function<void(float)>> dt_update_stage;
-    std::vector<std::function<void()>> internal_update_stage;
-};
-
-
-//make common interface with other containers/objects for updateing and stuff
+//TODOS():
+//1make common interface with other containers/objects for updateing and stuff
+//2divide the logic into containers, that are containering and pipelines,
+//that are using the data
+//3make some of these listst(container~pipeline pairs) for different datalayouts
+// like big big array, or lisdt of array or whatever
 struct uniformContainer;
 struct uniformContainer_list : public pipeline
 {
@@ -61,48 +37,22 @@ struct uniformContainer_list : public pipeline
     };
 
     std::function<void(const float)> getPipe()
+    {return [this](const float dt){this->pipe(dt);};}
+    
+    void addContainer(const std::string name, uniformContainer* container);
+    void deleteAllContainers()
     {
-        return [this](const float dt){this->pipe(dt);};
+        for(auto& it: containers) delete it.second;
     }
-    /*
-    void addContainer(
-        const std::string name,
-        uniformContainer* container,
-        std::function<void()> sort,
-        std::function<void(float)> dt_update,
-        std::function<void()> internal_update
-    );
-    */
-    void addContainer(
-        const std::string name,
-        uniformContainer* container
-    );
 
+    std::unordered_map<std::string, uniformContainer*> containers;
+private:
     void unpackEntryTicket(pipelineFuncPtrs ticket);
 
-    void onSort()
-    {
-        for(auto it: sort_stage)
-            it();
-    }
-    void onDtUpdate(const float dt)
-    {
-        for(auto it:dt_update_stage)
-            it(dt);
-    }
-    void onInternalUpdate()
-    {
-        for(auto it: internal_update_stage)
-            it();
-    }
-    void onGPUUpload()
-    {
-        for(auto it: on_GPU_upload_stage)
-        {
-            it();
-        }
-    }
-
+    void onSort(){for(auto it: sort_stage)it();}
+    void onDtUpdate(const float dt){for(auto it:dt_update_stage)it(dt);}
+    void onInternalUpdate(){for(auto it: internal_update_stage)it();}
+    void onGPUUpload(){for(auto it: on_GPU_upload_stage)it();}
     void pipe(const float dt)
     {
         this->onSort();
@@ -118,11 +68,6 @@ struct uniformContainer_list : public pipeline
     std::vector<std::function<void(float)>> dt_update_stage;
     std::vector<std::function<void()>> internal_update_stage;
     std::vector<std::function<void()>> on_GPU_upload_stage;
-    //unordered map of pipelines anyone??
-
-
-    std::unordered_map<std::string, uniformContainer*> containers;
-
 };
 template<typename T>
 T* allocateAndCopy(const size_t newSize, T* oldData, const int dataIndex)
@@ -133,90 +78,29 @@ T* allocateAndCopy(const size_t newSize, T* oldData, const int dataIndex)
     return newArray;
 }
 
+
 struct uniformContainer{
 protected:
-    uniformContainer( const size_t isize, const int iuID)
-    :typeID(iuID), entitySize(isize+isize%8),  
-    entityIDs(new int[isize+isize%8]())
-    {
-        for(size_t i=0;i<entitySize;++i)
-        {
-            entityIDs[i]=-1;
-        }
-    }
-
+    uniformContainer( const size_t isize, const int iuID);
     //RULE OF 5
-    uniformContainer(const uniformContainer& from)
-    :IDCounter(from.IDCounter), writeIndex(from.writeIndex), entitySize(from.entitySize)
-    {
-        entityIDs=new int[entitySize];
-        memset(entityIDs, -1, entitySize*sizeof(int));
-        memcpy(entityIDs, from.entityIDs, writeIndex*sizeof(int));
-    }
-
-    uniformContainer& operator=(const uniformContainer& from)
-    {
-        if(this==&from) return *this;
-        if(from.writeIndex!=this->entitySize)
-        {
-            this->reAllocate(from.entitySize);
-        }
-
-        
-        this->IDCounter=from.IDCounter;
-        this->entitySize=from.entitySize;
-        this->writeIndex=from.writeIndex;
-        memcpy(this->entityIDs, from.entityIDs, this->entitySize);
-        return *this;
-    }
-    uniformContainer(uniformContainer&& from)noexcept
-    :IDCounter(from.IDCounter), writeIndex(from.writeIndex), entitySize(from.entitySize)
-    {
-        this->entityIDs=from.entityIDs;
-        from.entityIDs=nullptr;
-        from.entitySize=0;
-    }
-
-    uniformContainer& operator=(uniformContainer&& from)noexcept
-    {
-        if(this->entityIDs)delete[] this->entityIDs;
-        this->IDCounter=from.IDCounter;
-        this->entitySize=from.entitySize;
-        this->writeIndex=from.writeIndex;
-        this->entityIDs=from.entityIDs;
-        from.entityIDs=nullptr;
-        from.entitySize=0;
-        return *this;
-    }
-
+    uniformContainer(const uniformContainer& from);
+    uniformContainer& operator=(const uniformContainer& from);
+    uniformContainer(uniformContainer&& from)noexcept;
+    uniformContainer& operator=(uniformContainer&& from)noexcept;
+    
     
 
-    //now adds are fast and rmv is slow
-    //if you guarantee a sorted list of ints
-    //(th sort algo respects the order of ints)
-    //you can binary search for ID to remove O(log n)
+    
+        
     int add();
+
+    //removes the ID from the container.
+    //actual removal is not happening until the next sort
     void remove(const int ID);
-    void reAllocate(const size_t newSize)
-    {
-        int* newArray=new int[newSize+newSize%8];
-        memset(newArray, -1, entitySize*sizeof(int));
-        memcpy(newArray, entityIDs, writeIndex*sizeof(int));
-        delete[] entityIDs;
-        entityIDs=allocateAndCopy(newSize, entityIDs, writeIndex);
-        entitySize=newSize;
-    }
-
-
-
-
-    void sortWithData(std::function<void(int i, int* gather)> subSorts); 
+    void reAllocate(const size_t newSize);
+    void sortWithData(std::function<void(int, int*)> subSorts); 
     void onBulkRemoval();
-
-    ~uniformContainer()
-    {
-        delete[] entityIDs;
-    }
+    
 
     int IDCounter=0;
     int* entityIDs;
@@ -228,22 +112,36 @@ private:
     size_t entitySize;
     
 public:
-    //virutal pipeline entrytickets
-    virtual uniformContainer_list::pipelineFuncPtrs makeEntryTicket()=0;
+    struct iterator{
+        iterator(const int iindex, uniformContainer* imyCont)
+        :index(iindex), myCont(imyCont){}
+        
+        iterator& operator++(){++index;return *this;}
+        iterator& operator--(){--index;return *this;}
+        bool operator==(const uniformContainer::iterator& rhs)
+        {return this->index==rhs.index;}
+        iterator& operator=(const iterator& rhs)=default;
+        int operator*(){return *((myCont->entityIDs)+index);}
+
+        int index;
+        uniformContainer* myCont;
+    };
+    iterator begin(){return iterator(0, this);}
+    int getTypeID()const{return this->typeID;}
     int end()const{return writeIndex;}
     size_t size()const{return entitySize;}
-    int getTypeID()const{return this->typeID;}
 
+
+    //virutal pipeline entrytickets
+    virtual uniformContainer_list::pipelineFuncPtrs makeEntryTicket()=0;
+    
+    virtual ~uniformContainer()
+    {
+        delete[] entityIDs;
+    }
 
     //el printore
-    void printIDs(const char* msg="")const
-    {
-        printf("\n%s", msg);
-        for(int i=0; i<writeIndex; ++i)
-        {
-            printf("\nId: %i, vIndex:%i", entityIDs[i], i);
-        }
-    }
+    void printIDs(const char* msg="")const;
 };
 
 

@@ -109,7 +109,7 @@ int GPUbuffer::getOffsetForSize(const size_t n_size)//in floats
 }
 void GPUbuffer::init_subBuffer(const int ID, const int8_t iperVertexSize, const int8_t istride, float* data, const int data_size)
 {
-    subBuffer& subBuf=getSubBuffer(ID);
+    subBuffer& subBuf=getSubBuffer(ID); 
     subBuf.setPerVertexSize(iperVertexSize);
     subBuf.setStride(istride);
     if(data&&data_size)
@@ -158,6 +158,13 @@ void GPUbuffer::freeSubBuffer(const int ID)
         subBuffers.erase(iter);
     else
         DEBUGMSG("\n freeSubBuffer failed: id not found");
+}
+
+void GPUbuffer::deleteBuffer()
+{
+    glDeleteBuffers(1, &this->bufferID);
+    this->bufferID=0;
+    this->drawtype=GL_FALSE;
 }
 
 /*
@@ -255,11 +262,18 @@ gpuBufferList_node* gpuBufferList::allocateNewNode(const size_t size, GLenum typ
     return latest;
 }
 
+void gpuBufferList::deleteNodes(gpuBufferList_node* node)
+{
 
+    if(node->next)
+    {
+        deleteNodes(node->next);
+    }
+    node->buffer.deleteBuffer();
+    delete node;
+    return;
 
-
-
-
+}
 
 
 

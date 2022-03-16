@@ -53,6 +53,66 @@ void uniformContainer_list::unpackEntryTicket(pipelineFuncPtrs ticket)
 ================================================================================
 ================================================================================
 */
+uniformContainer::uniformContainer( const size_t isize, const int iuID)
+:typeID(iuID), entitySize(isize+isize%8),  
+entityIDs(new int[isize+isize%8]())
+{
+    for(size_t i=0;i<entitySize;++i)
+    {
+        entityIDs[i]=-1;
+    }
+}
+//RULE OF 5
+uniformContainer::uniformContainer(const uniformContainer& from)
+:IDCounter(from.IDCounter), writeIndex(from.writeIndex), entitySize(from.entitySize),
+deleteQue(from.deleteQue), typeID(from.typeID)
+{
+    entityIDs=new int[entitySize];
+    memset(entityIDs, -1, entitySize*sizeof(int));
+    memcpy(entityIDs, from.entityIDs, writeIndex*sizeof(int));
+}
+uniformContainer& uniformContainer::operator=(const uniformContainer& from)
+{
+    if(this==&from) return *this;
+    if(from.writeIndex!=this->entitySize)
+    {
+        this->reAllocate(from.entitySize);
+    }
+    
+    this->IDCounter=from.IDCounter;
+    this->entitySize=from.entitySize;
+    this->writeIndex=from.writeIndex;
+    this->deleteQue=from.deleteQue;
+    this->typeID=from.typeID;
+    memcpy(this->entityIDs, from.entityIDs, this->entitySize);
+    return *this;
+}
+uniformContainer::uniformContainer(uniformContainer&& from)noexcept
+:IDCounter(from.IDCounter), writeIndex(from.writeIndex), entitySize(from.entitySize),
+deleteQue(from.deleteQue), typeID(from.typeID)
+{
+    this->entityIDs=from.entityIDs;
+    from.entityIDs=nullptr;
+    from.entitySize=0;
+}
+uniformContainer& uniformContainer::operator=(uniformContainer&& from)noexcept
+{
+    if(this->entityIDs)delete[] this->entityIDs;
+    this->IDCounter=from.IDCounter;
+    this->entitySize=from.entitySize;
+    this->writeIndex=from.writeIndex;
+    this->deleteQue=std::move(from.deleteQue);
+    this->typeID=from.typeID;
+    
+    from.entityIDs=nullptr;
+    from.entitySize=0;
+    return *this;
+}
+
+
+
+
+
 int uniformContainer::add()
 {
     if(writeIndex==entitySize-1)
@@ -67,6 +127,16 @@ void uniformContainer::remove(const int ID)
     if(ID==-1)return;
     this->deleteQue.push_back(ID);
     
+}
+
+void uniformContainer::reAllocate(const size_t newSize)
+{
+    int* newArray=new int[newSize+newSize%8];
+    memset(newArray, -1, entitySize*sizeof(int));
+    memcpy(newArray, entityIDs, writeIndex*sizeof(int));
+    delete[] entityIDs;
+    entityIDs=allocateAndCopy(newSize, entityIDs, writeIndex);
+    entitySize=newSize;
 }
 
 //opt: look at how many get rmved compared to how many exist and choose an appr
@@ -127,7 +197,7 @@ void uniformContainer::sortWithData(std::function<void(int, int*)> subSorts)
             }
             
         }
-        //weird ass shit going down here
+        //weird shit going down here
         //intv8 = _mm256_i32gather_epi32(entityIDs, _mm256_loadu_si256(256i*)&gather[0]), 4);
         
         //_mm256_storeu_si256((__m256i*)(entityIDs+i), intv8);
@@ -173,6 +243,14 @@ void uniformContainer::sortWithData(std::function<void(int, int*)> subSorts)
     //set write index
     writeIndex=i+gatherIndex;
     //printf("\n sort done");
+}
+void uniformContainer::printIDs(const char* msg)const
+{
+    printf("\n%s", msg);
+    for(int i=0; i<writeIndex; ++i)
+    {
+        printf("\nId: %i, vIndex:%i", entityIDs[i], i);
+    }
 } 
 
 

@@ -43,7 +43,7 @@ private:
 
 
 
-//this is float only. fuck off with them ints. also this is a hot buffer
+//this is float only. also this is a hot buffer
 //meant to be middle sized with the ability to sccess sub ranges
 //for big boy stuff maybe to a AoS approach?
 struct GPUbuffer{
@@ -53,8 +53,46 @@ struct GPUbuffer{
     subBuffers(std::vector<subBuffer>(1, subBuffer()))
     {}
 
+    //init the buffer to hold size floats on the gpu!
+    //returns false if buffer creation fails
+    //drawType: how you plan to use it on the GPU
     bool init(const GLenum drawType=GL_STATIC_DRAW);
+    /*
+    make a new subBuffer of size
+    calls getOffsetForSize, so its 'expensive'
+    returns the ID of the subBuffer, or the error code returned by getOffsetForSize
+    */
+    int newSubBuffer(const size_t n_size);
 
+    //write to buffer ID, offset into the subbuffer, size in floats
+    void writeToSubBuffer(const int ID, const int w_size, const float* data, const int offset=0);
+
+    //init a subbuffer with vertex specification, if data is provided a write is called aswell
+    void init_subBuffer(const int ID, const int8_t iperVertexSize, const int8_t istride, float* data=nullptr, const int data_size=0);
+
+    //TODO()
+    //write a function to repack the buffer in the GPU
+    void repackSubBuffers();
+
+    int getSameSubBuffer(const int ID);
+    void freeSubBuffer(const int ID);
+
+    subBuffer& getSubBuffer(const int ID);
+    size_t getSize()const{return this->size;}
+    size_t getFreeSize()const{return this->freeSize;}
+    GLuint getBufferID()const{return this->bufferID;}
+    GLenum getDataType()const{return this->datatype;}
+
+    void deleteBuffer();
+
+private:
+    size_t freeSize;
+    size_t size=0;//in floats, i guess
+    int IDcounter=0;
+    GLuint bufferID=0;
+    std::vector<subBuffer> subBuffers;
+    GLenum datatype=GL_FLOAT;
+    GLenum drawtype=GL_FALSE;
 
     /*
     warning: this is expensive
@@ -66,31 +104,8 @@ struct GPUbuffer{
     -3: cant find a small enough space to fit in n_size, either sort or find     other buffer
     */
     int getOffsetForSize(const size_t n_size);
-
-    int newSubBuffer(const size_t n_size);
-    subBuffer& getSubBuffer(const int ID);
-
-    //write to buffer ID, offset into the subbuffer, size in floats
-    void writeToSubBuffer(const int ID, const int w_size, const float* data, const int offset=0);
-
-    //init a subbuffer with vertex specification, if data is provided a write is called aswell
-    void init_subBuffer(const int ID, const int8_t iperVertexSize, const int8_t istride, float* data=nullptr, const int data_size=0);
-
     void sortSubBuffers();
-    //TODO()
-    //write a function to repack the buffer in the GPU
-    void repackSubBuffers();
-
-    int getSameSubBuffer(const int ID);
-    void freeSubBuffer(const int ID);
-
-    GLenum drawtype=GL_FALSE;
-    GLenum datatype=GL_FLOAT;
-    int IDcounter=0;
-    size_t size=0;//in floats, i guess
-    size_t freeSize;
-    GLuint bufferID=0;
-    std::vector<subBuffer> subBuffers;
+    
 };
 
 struct subBufferHandle{
@@ -124,13 +139,14 @@ struct gpuBufferList
     //this does allocate new buffers up to MAX_BUFFERSIZE
     //so dont call in hot path
     subBufferHandle newSubBuffer(const size_t n_size);
+    void deleteNodes(gpuBufferList_node* node);
+    gpuBufferList_node* getHead(){return this->head;}
 
 private:
     subBufferHandle allocateNodeAndAddSubBuffer(gpuBufferList_node* ptr, const size_t size);
     gpuBufferList_node* allocateNewNode(const size_t size, GLenum type, GLenum drawType);
 
     //TODO() write this
-    void deleteNodes();
 
     GLenum drawType;
     GLenum type;
@@ -148,13 +164,20 @@ struct gpuBufferList_node
     gpuBufferList_node* next=nullptr;
 };
 
-struct gpuBufferTree_head
+struct gpuBufferTree
 {
-    gpuBufferTree_head()
+    gpuBufferTree()
     :static_draw(GL_STATIC_DRAW, GL_FLOAT, 1000),
     dynamic_draw(GL_DYNAMIC_DRAW, GL_FLOAT, 1000),
     stream_draw(GL_STREAM_DRAW, GL_FLOAT, 1000)
     {}
+
+    void deleteAll()
+    {
+        static_draw.deleteNodes(static_draw.getHead());
+        dynamic_draw.deleteNodes(dynamic_draw.getHead());
+        stream_draw.deleteNodes(stream_draw.getHead());
+    }
 
     //floats
     gpuBufferList static_draw;

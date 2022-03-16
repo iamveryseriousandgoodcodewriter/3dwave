@@ -2,6 +2,16 @@
 #define UNIFORM_IMPL_H
 #include "masterContainer.h"
 
+
+//TODO()
+//1reason about a cpp file to keep things readable
+//2make some generic ones as a middleman between raw-container and the 
+//application layer(like this 3d uniform one), that you can then flesh out 
+//with details unique to a given drawable
+//3reason about the interface this must provide to the game logic
+//  and how that should be organized
+
+
 enum uniformID : int{
     _uniform3d,
     gridUniform
@@ -29,7 +39,7 @@ struct uniform3d : public uniformContainer
             throw bad_construction_exe(bad_construction_exe::bad_alloc,
             "uniform3d allocation failed with size: "+std::to_string(isize));
         }
-        subBufferHandle sbh=masterContainer::_GPUBuffers.dynamic_draw.newSubBuffer(isize*16);
+        subBufferHandle sbh=GPUmasterContainer::_GPUBuffers.dynamic_draw.newSubBuffer(isize*16);
         if(!sbh.buffer)
         {
             throw bad_construction_exe(
@@ -39,8 +49,17 @@ struct uniform3d : public uniformContainer
         this->myGPUBuffer.push_back(sbh);
         this->myGPUBuffer[0].buffer->init_subBuffer(this->myGPUBuffer[0].subBufferID,
         16, 0);
-        masterContainer::subBuffers.insert({name+"_model", myGPUBuffer[0]});
+        GPUmasterContainer::subBuffers.insert({name+"_model", myGPUBuffer[0]});
     }
+
+    ~uniform3d()
+    {
+        delete[] trans;
+        delete[] rot;
+        delete[] scale;
+        delete[] model;
+    }
+
 
     void remove(const int ID)
     {
@@ -183,7 +202,7 @@ struct uniform3d : public uniformContainer
     {
         std::vector<oneVertexArraySetup> ret=
         {
-            oneVertexArraySetup(masterContainer::subBuffers.at(name+"_model"), 1, 2)
+            oneVertexArraySetup(GPUmasterContainer::subBuffers.at(name+"_model"), 1, 2)
         };
         return ret;
     }
@@ -230,7 +249,7 @@ struct gridUniforms : public uniformContainer
             throw bad_construction_exe(bad_construction_exe::bad_alloc,
             "gridUniforms allocation failed with size: "+std::to_string(count));
         }
-        subBufferHandle sbh=masterContainer::_GPUBuffers.static_draw.newSubBuffer(count*2);
+        subBufferHandle sbh=GPUmasterContainer::_GPUBuffers.static_draw.newSubBuffer(count*2);
         if(!sbh.buffer)
         {
             throw bad_construction_exe(
@@ -239,10 +258,10 @@ struct gridUniforms : public uniformContainer
         }
         this->myGPUBuffer.push_back(sbh);
         this->myGPUBuffer[0].buffer->init_subBuffer(this->myGPUBuffer[0].subBufferID, 2, 0);
-        masterContainer::subBuffers.insert({name+"_pos", myGPUBuffer[0]});
+        GPUmasterContainer::subBuffers.insert({name+"_pos", myGPUBuffer[0]});
 
         //scale
-        sbh=masterContainer::_GPUBuffers.static_draw.newSubBuffer(count);
+        sbh=GPUmasterContainer::_GPUBuffers.static_draw.newSubBuffer(count);
         if(!sbh.buffer)
         {
             throw bad_construction_exe(
@@ -251,9 +270,16 @@ struct gridUniforms : public uniformContainer
         }
         this->myGPUBuffer.push_back(sbh);
         this->myGPUBuffer[1].buffer->init_subBuffer(this->myGPUBuffer[1].subBufferID, 1, 0);
-        masterContainer::subBuffers.insert({name+"_scale", myGPUBuffer[1]});
+        GPUmasterContainer::subBuffers.insert({name+"_scale", myGPUBuffer[1]});
 
     }
+
+    ~gridUniforms()
+    {
+        delete[] trans;
+        delete[] scale;
+    }
+
     int add(const oneGrid g)
     {
         return this->add(g.pos, g.scale);
@@ -313,24 +339,44 @@ struct gridUniforms : public uniformContainer
 
     void onGPUUpload()
     {
-        //IDEA: "buffer" these write calls, and perform them on the list in bulk
-        this->myGPUBuffer[0].buffer->writeToSubBuffer(
-            this->myGPUBuffer[0].subBufferID,
-             this->writeIndex*2,
-              (float*)trans);
+        static bool isUploaded=false;
 
+        if(!isUploaded)
+        {
+        //IDEA: "buffer" these write calls, and perform them on the list in bulk
+            this->myGPUBuffer[0].buffer->writeToSubBuffer(
+                this->myGPUBuffer[0].subBufferID,
+                this->writeIndex*2,
+                (float*)trans);
+
+            this->myGPUBuffer[1].buffer->writeToSubBuffer(
+                this->myGPUBuffer[1].subBufferID,
+                this->writeIndex,
+                (float*)scale);
+
+            isUploaded=true;
+        }
+    }
+
+    void incrementScale(float step)
+    {
+        step=this->scale[0]+step;
+        for(int i=0; i<this->end();++i)
+        {
+            scale[i]=step;
+        }
         this->myGPUBuffer[1].buffer->writeToSubBuffer(
-            this->myGPUBuffer[1].subBufferID,
-             this->writeIndex,
-              (float*)scale);
+                this->myGPUBuffer[1].subBufferID,
+                this->writeIndex,
+                (float*)scale);
     }
     
     std::vector<oneVertexArraySetup> getVAOstats(const std::string name)const
     {
         std::vector<oneVertexArraySetup> ret=
         {
-            oneVertexArraySetup(masterContainer::subBuffers.at(name+"_pos"), 1, 1),
-            oneVertexArraySetup(masterContainer::subBuffers.at(name+"_scale"), 1, 1)
+            oneVertexArraySetup(GPUmasterContainer::subBuffers.at(name+"_pos"), 1, 1),
+            oneVertexArraySetup(GPUmasterContainer::subBuffers.at(name+"_scale"), 1, 2)
         };
         return ret;
     }
@@ -341,7 +387,7 @@ struct gridUniforms : public uniformContainer
         p.sort=std::bind(&gridUniforms::sort, std::ref(*this));
         p.dt=nullptr;
         p.internal=nullptr;
-        p.GPU_upload=nullptr;//std::bind(&gridUniforms::onGPUUpload, std::ref(*this));
+        p.GPU_upload=std::bind(&gridUniforms::onGPUUpload, std::ref(*this));
         return p;
     };
     
@@ -356,12 +402,14 @@ std::vector<oneGrid> makeDiagonalGridSquare(const float scale, int max, int midd
 {
     std::vector<oneGrid> ret;
     //check the maximum middle size that fits
-    int i=0, currMiddle=1;
-    while(max-currMiddle>0)
+    int i=-1, currMiddle=1, currEntityCnt=0;
+
+    while(currEntityCnt<max)
     {
         currMiddle+=2;
-        max-=(i+=2)*2;
+        currEntityCnt+=(i+=2)*2+currMiddle;
     }
+    currMiddle-=2;
     //check if we exeed that
     int count;
     if(middle==-1||middle>currMiddle)
@@ -394,7 +442,34 @@ std::vector<oneGrid> makeDiagonalGridSquare(const float scale, int max, int midd
     };
     lineBuilder(middle, 0);
     builder(middle-2, 1);
+    printf("\n sizeof onegridvec: %ld", ret.size());
     return ret;
 }
+
+//temp ideas, dont belong here
+
+struct rect_plane{
+
+    //parameter darstellung
+    glm::vec3 pos;
+    glm::vec3 x, y;//dir is plane dir, size is plane size
+
+    //implizite darstellung
+    float a, b, c, rhs;
+
+    bool is_on_plane(const glm::vec3 point)const
+    {
+        return (point.x*a+point.y*b+point.z*c)==rhs;
+    }
+
+    //????--------------this is half a chache line! 
+    glm::vec3 pos, normal;
+    float x, y;
+
+
+};
+
+
+
 
 #endif //UNIFORM_IMPL_H

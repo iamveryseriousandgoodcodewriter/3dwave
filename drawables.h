@@ -27,36 +27,9 @@ struct oneVertexArraySetup
 };
 
 
-
-//this is works like this currently:
-//you make meshes, you put the meshes in the gpuBuffer
-//you make instances(uniforms), and put them in the GPUBuffer
-//    *this is by inheritance in the uniform_impl.h
-//you grab the subBufferhandles and call this->init with them
-//      *you have to know the attribDiv(obv)
-//      *the location is based on the shader you are using
-//you draw
-//:))
-
-//TODO():
-//  rework the drawable container
-//  make the pipeline concept from the uniform coantainer more generic?
-//  make an example and run it
-//  build a better abstraction for the uniformBufferObjects
-//  make everything nice and shiny(with loading functions and stuff like that)
-
-//hold all obj_containers in some meta way
-//add "relation-vector" to it, where you can specify 2 of these
-//containers and a way they want to interact(like compute collisions)
+// TODO() make everything nice and shiny(with loading functions and stuff like that)
 
 
-//IDEAS():
-//  *un-link the construction and uploading of the data
-//      this way you can init the data and upload it to gpu when it is needed
-//  *make a function that produces a drawable, but hides everything that would be 
-//      needed for that(like the unifrom container creation  etc.)
-// maybe the drawable wants to hold all of the construction nessecary for it?
-//maybe not tho lol
 struct drawable{
 
     drawable(GLuint ishader)
@@ -64,27 +37,58 @@ struct drawable{
     {}
 public:
 
-    //both function below dont really get used in their intended way
-    //   by the construct drawable method
-    //  so rework those i guess
-    
-    //int addEntity();
+    //TODO():rework init and vertexArraySetup to match their use
+    //  both function below dont really get used in their intended way
+    //  by the construct drawable method
+
+    /*
+    init the drawable, so it can be used
+    vertexCount: specifies the nr of vertexes to be drawn per instance
+    entityArray: unifromContainer associated with this drawable
+                 the add functions work on this one
+    vertArrays: calls vertexArraySetup on these, in the order
+                they are given
+                Locations are linked to the Shader!
+    */   
     void init(const size_t vertexCount, uniformContainer* entityArray, std::vector<oneVertexArraySetup> vertArrays);
 
-    /*links a subBuffer into this->vao, attrib divisor is for instncaing, location is the location in this->shader, for the vertexAttrib in tha array*/
+    /*
+    links a subBuffer into this->vao, 
+    attrib divisor: is for instncaing, 
+    location: location for this attrib in this->shader
+                if your vertexArray is >4 float location is the first one
+                (same es in the shader)
+    */
     void vertexArraySetup(const subBufferHandle buf, const int attribDivisor, const int location);
 
+
+
+    /*
+        set the uniform in this->shader
+        TODO(): make this more useable, linked to reowrk of master
+                container, look in ideas file
+    */
     void setUniformFloat(const float f, const char* name)const;
 
-
+    //.........
     void draw()const;
     
 
+    /*
+    add one Entity to this Drawable, returns its ID
+    Entity: the singleEn. struct for the container this drawable
+            uses. make sure they are the same(uniformCont::typeID)
+    */
     template<typename cont, typename single>
     int addEntity(const single Entity);
+
+    /*
+        same as addEntity but in bulk
+    */
     template<typename cont, typename single>
     std::vector<int> addNEntity(const std::vector<single> NEntity);
 
+    //grabs the current instance Count from the associated uniformContainer
     void getInstanceCount(){this->instanceCount=myEntities->end();}
     
     //TODO grab the instance count from the uniform containers
@@ -143,97 +147,9 @@ std::vector<int> drawable::addNEntity(const std::vector<single> NEntity)
 
 
 
-const GLchar* solidColorCubeVertexShader=R"glsl(
-    #version 420 core
-    layout (location=0) in vec3 pos;
-    layout (location=1) in vec4 color;
-    layout (location=2) in mat4 model;
-
-    //global camera mat
-    layout (std140, binding = 0) uniform cameraMat
-    {
-        mat4 projection;
-        mat4 view;
-    }camera;
-
-    out vec4 v_out_color;
-
-    void main()
-    {
-        
-        gl_Position=camera.projection*camera.view*model*vec4(pos, 1.0f);
-        v_out_color=color;
-    }
-)glsl";
-
-
-const GLchar* solidColorCubeFragmentShader=R"glsl(
-    #version 420 core
-
-    in vec4 v_out_color;
-
-    out vec4 final_color;
-    
-    void main()
-    {
-        final_color=v_out_color;
-    }
-
-)glsl";
-
-const GLchar* gridShaderWithWave_vertex=R"glsl(
-    #version 420 core
-
-    layout (location=0) in vec2 pos;
-    layout (location=1) in vec2 trans;
-    layout (location=2) in float scale;
-
-    uniform float angle;
-    uniform float damp;//the smaller this is the more dampend
-    uniform float spike;//the smaller this is the higher they spike
-
-    layout (std140, binding = 0) uniform cameraMat
-    {
-        mat4 projection;
-        mat4 view;
-    }camera;
-
-    layout(std140, binding = 10) uniform waveOrigin
-    {
-        vec3 posPhase[10];
-    }origin;
-
-
-    out vec4 v_out_color;
-
-    float getAccZ(in float posx, in float posy, in float alpha, in vec3 org)
-    {
-
-       vec2 originDis=vec2(posx,posy)-vec2(org.x, org.y);
-
-       float r=sqrt(originDis.x*originDis.x+originDis.y*originDis.y);
-        
-       return -sin(r-alpha+org.z)*(damp/(r+spike));
-    }
-
-    void main()
-    {
-
-
-        vec4 final_pos=vec4(1.0f,1.0f,0.0f,1.0f);
-        final_pos.x=(pos.x*scale)+trans.x;
-        final_pos.y=(pos.y*scale)+trans.y;
-        for(int i=0;i<10;++i)
-        {
-            final_pos.z+=getAccZ(final_pos.x, final_pos.y, angle, origin.posPhase[i]);
-        }
-        gl_Position=camera.projection*camera.view*final_pos;
-
-        v_out_color=vec4(0.75f, 0.75f, 0.75f, 0.75f);
-    }
-
-
-)glsl";
+extern const GLchar* solidColorCubeVertexShader;
+extern const GLchar* solidColorCubeFragmentShader;
+extern const GLchar* gridShaderWithWave_vertex;
 
 
 //shared ubo
