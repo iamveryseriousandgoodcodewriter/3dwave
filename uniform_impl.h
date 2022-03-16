@@ -446,28 +446,7 @@ std::vector<oneGrid> makeDiagonalGridSquare(const float scale, int max, int midd
     return ret;
 }
 
-//temp ideas, dont belong here
 
-struct rect_plane{
-
-    //parameter darstellung
-    glm::vec3 pos;
-    glm::vec3 x, y;//dir is plane dir, size is plane size
-
-    //implizite darstellung
-    float a, b, c, rhs;
-
-    bool is_on_plane(const glm::vec3 point)const
-    {
-        return (point.x*a+point.y*b+point.z*c)==rhs;
-    }
-
-    //????--------------this is half a chache line! 
-    glm::vec3 pos, normal;
-    float x, y;
-
-
-};
 
 
 
